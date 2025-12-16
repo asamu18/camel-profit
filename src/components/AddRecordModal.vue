@@ -2,7 +2,8 @@
   <el-dialog
     v-model="visible"
     title="新增记账"
-    width="500px"
+    width="90%" 
+    style="max-width: 500px;" 
     center
     destroy-on-close
   >

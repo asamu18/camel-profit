@@ -2,7 +2,7 @@
   <div class="p-6 max-w-7xl mx-auto min-h-screen">
     
     <!-- 1. 顶部控制栏 (保持不变) -->
-    <div class="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
       <div class="flex items-center">
         <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xl mr-3">驼</div>
         <div>
@@ -10,7 +10,7 @@
           <p class="text-xs text-gray-500">数据月份：{{ currentMonth }}</p>
         </div>
       </div>
-      <div class="flex gap-3">
+      <div class="flex gap-3 w-full md:w-auto overflow-x-auto pb-1">
         <el-date-picker 
           v-model="currentMonth" type="month" value-format="YYYY-MM" :clearable="false"
           @change="refreshAll" placeholder="选择月份" style="width: 140px;"
@@ -28,25 +28,25 @@
 
     <!-- 2. 核心指标卡片 (保持不变) -->
     <el-row :gutter="20" class="mb-6">
-      <el-col :span="6">
+      <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="never" class="border-l-4 border-green-500">
           <template #header><span class="text-gray-500 text-sm">本月总收入</span></template>
           <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.income) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="never" class="border-l-4 border-gray-400">
           <template #header><span class="text-gray-500 text-sm">固定成本</span></template>
           <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.fixedCost) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="never" class="border-l-4 border-orange-400">
           <template #header><span class="text-gray-500 text-sm">变动成本</span></template>
           <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.variableCost) }}</div>
         </el-card>
       </el-col>
-      <el-col :span="6">
+      <el-col :xs="24" :sm="12" :md="6">
         <el-card shadow="never" class="bg-gray-800 text-white border-none">
           <template #header><span class="text-gray-300 text-sm">本月净利润</span></template>
           <div class="text-4xl font-bold" :class="stats.profit >= 0 ? 'text-green-400' : 'text-red-400'">
@@ -59,14 +59,14 @@
     <!-- 3. 可视化图表区 (NEW) -->
     <el-row :gutter="20" class="mb-6">
       <!-- 左侧：成本饼图 -->
-      <el-col :span="12">
+      <el-col :xs="24" :md="12" class="mb-6 md:mb-0">
         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 overflow-hidden">
           <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-orange-500 pl-2">本月成本结构</h3>
           <div id="pieChart" style="height: 350px; width: 100%;"></div>
         </div>
       </el-col>
       <!-- 右侧：趋势柱状图 -->
-      <el-col :span="12">
+      <el-col :xs="24" :md="12" class="mb-6 md:mb-0">
         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
           <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-blue-500 pl-2">近半年利润趋势</h3>
           <div id="barChart" style="height: 350px; width: 100%;"></div>
@@ -88,6 +88,19 @@
             <el-table-column prop="amount" label="总金额" sortable>
               <template #default="scope"><span class="font-bold text-green-600">+ ¥{{ formatNumber(scope.row.amount) }}</span></template>
             </el-table-column>
+            <!-- 🆕 新增：删除操作列 -->
+            <el-table-column label="操作" width="100" align="center">
+              <template #default="scope">
+                <!-- 修改点：去掉了 link，去掉了 icon，保留 type="danger" -->
+                <el-button 
+                  type="danger" 
+                  size="small" 
+                  @click="handleDelete(scope.row, 'income')"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
         
@@ -103,6 +116,19 @@
             <el-table-column prop="amount" label="支出金额" sortable>
               <template #default="scope"><span class="font-bold text-red-500">- ¥{{ formatNumber(scope.row.amount) }}</span></template>
             </el-table-column>
+            <!-- 🆕 新增：删除操作列 -->
+            <el-table-column label="操作" width="100" align="center">
+              <template #default="scope">
+                <!-- 修改点：去掉了 link，去掉了 icon，保留 type="danger" -->
+                <el-button 
+                  type="danger" 
+                  size="small" 
+                  @click="handleDelete(scope.row, 'cost')"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
@@ -113,12 +139,15 @@
 </template>
 import * as XLSX from 'xlsx' // 引入 Excel 处理库
 <script setup>
-import { Plus, Download } from '@element-plus/icons-vue' // 加上 Download
+// 1. 引入 Delete 图标
+import { Plus, Download, Delete } from '@element-plus/icons-vue' 
 import { ref, onMounted, computed, nextTick } from 'vue'
-
-import * as echarts from 'echarts' // 引入 ECharts
+import * as echarts from 'echarts'
 import AddRecordModal from './AddRecordModal.vue'
+import * as XLSX from 'xlsx'
 import { dataService } from '../api/dataService'
+// 2. 引入消息确认框
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // --- 状态定义 ---
 const currentMonth = ref(new Date().toISOString().slice(0, 7))
@@ -300,6 +329,33 @@ const handleExport = () => {
 
   // 4. 触发下载
   XLSX.writeFile(wb, `驼场利润报表_${currentMonth.value}.xlsx`)
+}
+// --- 删除逻辑 ---
+const handleDelete = (row, type) => {
+  ElMessageBox.confirm(
+    '确定要删除这条记录吗？删除后无法恢复。',
+    '警告',
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(async () => {
+    try {
+      // 调用 API 删除
+      // type 传入 'income' 或 'cost'
+      await dataService.deleteRecord(type, row.id)
+      
+      ElMessage.success('删除成功')
+      // 核心：删除后立即刷新所有数据
+      refreshAll()
+    } catch (error) {
+      console.error(error)
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {
+    // 用户点击了取消，不做任何事
+  })
 }
 
 // 初始化

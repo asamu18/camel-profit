@@ -53,5 +53,20 @@ export const dataService = {
     ])
     
     return { income: incomeRes.data, cost: costRes.data }
+  },
+  
+
+  // --- NEW: 5. 删除记录 (通用方法) ---
+  async deleteRecord(table, id) {
+    // table: 'income' 或 'cost'
+    // id: 要删除的记录ID
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq('id', id)
+    
+    if (error) throw error
+    return true
   }
+
 }
