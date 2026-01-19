@@ -1,441 +1,385 @@
 <template>
-  <div class="p-6 max-w-7xl mx-auto min-h-screen">
+  <div class="p-4 max-w-lg mx-auto min-h-screen pb-20 bg-gray-50">
     
-    <!-- 顶部栏 -->
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
-  <!-- 左侧标题：手机端居中，电脑端居左 -->
-  <div class="flex items-center w-full md:w-auto justify-center md:justify-start">
-    <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xl mr-3 flex-shrink-0">驼</div>
-    <div>
-      <h1 class="text-xl font-bold text-gray-800 whitespace-nowrap">驼场利润系统</h1>
-      <p class="text-xs text-gray-500 text-left">数据月份：{{ currentMonth }}</p>
+    <!-- 1. 顶部：工具栏 -->
+    <div class="flex justify-between items-center mb-4 pt-2">
+      <el-button type="danger" link size="small" @click="handleDebugReset">
+        <el-icon class="mr-1"><RefreshRight /></el-icon>重置系统(测试)
+      </el-button>
+      <div class="flex gap-2">
+         <el-button type="success" plain size="small" round @click="openFeedStats">
+          <el-icon class="mr-1"><Search /></el-icon>查饲料
+        </el-button>
+        <el-button type="info" plain size="small" circle @click="handleLogout">
+          <el-icon><SwitchButton /></el-icon>
+        </el-button>
+      </div>
     </div>
-  </div>
 
-  <!-- 右侧操作栏：手机端允许换行 (flex-wrap)，并居中 -->
-  <div class="flex flex-wrap justify-center md:justify-end gap-2 w-full md:w-auto">
-    <!-- 日期选择器：手机端设为稍微宽一点 -->
-    <el-date-picker 
-      v-model="currentMonth" type="month" value-format="YYYY-MM" :clearable="false"
-      @change="refreshAll" placeholder="月份" 
-      style="width: 130px;" 
-      class="mb-2 sm:mb-0"
-    />
-    
-    <!-- 按钮组 -->
-    <el-button type="success" plain @click="handleExport" class="!ml-0">
-      <el-icon class="mr-1"><Download /></el-icon> 导出
-    </el-button>
-    
-    <el-button type="primary" @click="handleAdd" class="!ml-0">
-      <el-icon class="mr-1"><Plus /></el-icon> 新增
-    </el-button>
-    
-    <el-button type="info" text @click="handleLogout" class="!ml-0">
-      退出
-    </el-button>
-  </div>
-</div>
+    <!-- 2. 核心业务卡片：今日交奶 (简化版) -->
+    <div class="bg-blue-600 rounded-2xl p-5 shadow-lg text-white mb-6 relative overflow-hidden">
+      <!-- 装饰背景 -->
+      <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500 rounded-full opacity-30 pointer-events-none"></div>
+      
+      <div class="flex justify-between items-center mb-4 relative z-10">
+        <div class="font-bold flex items-center gap-2">
+          <span class="text-2xl">🥛</span> 
+          <span class="text-lg">今日交奶</span>
+        </div>
+        <!-- 显示上次记录时间，但不让改间隔了 -->
+        <div class="text-xs opacity-80 bg-blue-700 px-2 py-1 rounded">
+           上一次: {{ herdSize.milk_frequency }}天前
+        </div>
+      </div>
 
-    <!-- 指标卡 (保持不变) -->
-    <el-row :gutter="20" class="mb-6">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-green-500">
-          <template #header><span class="text-gray-500 text-sm">本月总收入</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.income) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-gray-400">
-          <template #header><span class="text-gray-500 text-sm">固定成本</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.fixedCost) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-orange-400">
-          <template #header><span class="text-gray-500 text-sm">变动成本</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.variableCost) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="bg-gray-800 text-white border-none">
-          <template #header><span class="text-gray-300 text-sm">本月净利润</span></template>
-          <div class="text-4xl font-bold" :class="stats.profit >= 0 ? 'text-green-400' : 'text-red-400'">
-            ¥ {{ formatNumber(stats.profit) }}
+      <!-- 参数输入行 (只填重量和单价) -->
+      <div class="flex gap-4 mb-5 relative z-10">
+        <div class="flex-1">
+           <div class="text-xs text-blue-100 mb-1 opacity-80">交奶量 (公斤)</div>
+           <el-input-number 
+             v-model="herdSize.milk_quantity_per_time" 
+             :min="0" 
+             size="large" 
+             style="width: 100%" 
+             :controls="false" 
+             class="!text-lg font-bold"
+           />
+        </div>
+        <div class="flex-1">
+           <div class="text-xs text-blue-100 mb-1 opacity-80">单价 (元)</div>
+           <el-input-number 
+             v-model="herdSize.milk_price" 
+             :min="0" 
+             size="large" 
+             style="width: 100%" 
+             :controls="false"
+             class="!text-lg font-bold" 
+           />
+        </div>
+      </div>
+
+      <!-- 底部计算与按钮 -->
+      <div class="flex justify-between items-center border-t border-blue-500/50 pt-4 relative z-10">
+        <div>
+          <span class="text-xs text-blue-200">本次收入</span>
+          <div class="font-bold text-2xl">¥ {{ (herdSize.milk_quantity_per_time * herdSize.milk_price).toFixed(0) }}</div>
+        </div>
+        <el-button type="warning" size="large" class="!font-bold !px-8 !border-none !shadow-lg" @click="saveMilkIncome" :loading="milkLoading">
+          确认入账
+        </el-button>
+      </div>
+    </div>
+
+    <!-- 3. 效益预估看板 (重点展示月/年利润) -->
+    <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+       <div class="flex justify-between items-center mb-4 border-b border-gray-50 pb-2">
+         <div class="text-gray-800 font-bold flex items-center gap-1">
+           <el-icon class="text-orange-500"><DataAnalysis /></el-icon> 效益预估
+         </div>
+         <el-tag size="small" type="info" effect="plain" class="scale-90">基于当前规模与模板</el-tag>
+       </div>
+       
+       <!-- 月利润 & 年利润 -->
+       <div class="grid grid-cols-2 gap-4 mb-4">
+          <div class="bg-green-50 p-3 rounded-xl border border-green-100 text-center">
+            <div class="text-xs text-gray-500 mb-1">预估月利润</div>
+            <div class="text-2xl font-bold text-green-700">¥ {{ projected.monthProfit }}</div>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+          <div class="bg-orange-50 p-3 rounded-xl border border-orange-100 text-center">
+            <div class="text-xs text-gray-500 mb-1">预估年利润</div>
+            <div class="text-2xl font-bold text-orange-700">¥ {{ projected.yearProfit }}</div>
+          </div>
+       </div>
+       
+       <!-- 底部详情 -->
+       <div class="flex justify-between text-xs text-gray-400 px-1">
+          <span>日均产值: ¥{{ projected.dayIncome }}</span>
+          <span>日均成本: ¥{{ projected.dayCost }}</span>
+       </div>
+    </div>
 
-    <!-- NEW: 每日收支趋势图 -->
-    <el-row class="mb-6">
-      <el-col :span="24">
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-purple-500 pl-2">本月每日收支详情</h3>
-          <div id="dailyChart" style="height: 300px; width: 100%;"></div>
+    <!-- 4. 今日额外账单 -->
+    <div v-if="extraCosts.length > 0" class="mb-6 animate-fade-in">
+      <div class="flex justify-between items-center mb-2 px-1">
+        <h3 class="font-bold text-gray-800 text-lg flex items-center">
+          <span class="text-xl mr-1">⚡</span> 今日新增账单
+        </h3>
+        <span class="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded font-bold">
+          共 ¥{{ extraCostTotal }}
+        </span>
+      </div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-orange-100 overflow-hidden">
+         <div v-for="item in extraCosts" :key="item.id" class="p-3 border-b border-gray-50 last:border-0 flex justify-between items-center cursor-pointer hover:bg-gray-50" @click="editRecord(item)">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 text-xs font-bold">
+                {{ item.category.slice(0,1) }}
+              </div>
+              <div>
+                <div class="font-bold text-gray-700 text-sm">
+                  {{ item.category }}
+                  <span v-if="item.cost_type === '库存进货'" class="text-[10px] bg-green-100 text-green-700 px-1 rounded ml-1">库存</span>
+                </div>
+                <div class="text-xs text-gray-400" v-if="item.weight > 0">{{ item.weight }}吨 | 可用{{ item.duration }}天</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="font-bold text-gray-800">¥ {{ formatNumber(item.amount) }}</div>
+            </div>
+         </div>
+      </div>
+    </div>
+
+    <!-- 5. 每日支出 (标准) -->
+    <div class="flex justify-between items-center mb-3 px-1">
+      <h3 class="font-bold text-gray-800 text-lg">每日支出 (标准)</h3>
+      <div class="text-xs text-gray-400">
+        <span class="text-gray-600 font-bold">¥ {{ templateTotalCost }}</span> /天
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+      <div class="grid grid-cols-4 bg-gray-50 p-3 text-xs text-gray-500 font-medium">
+        <div class="col-span-2">项目 (点击修改)</div>
+        <div class="text-center">数量</div>
+        <div class="text-right">金额</div>
+      </div>
+
+      <div class="divide-y divide-gray-50">
+        <div 
+          v-for="(item, idx) in mergedDailyList" 
+          :key="idx" 
+          @click="editRecord(item)"
+          class="grid grid-cols-4 p-3 items-center text-sm cursor-pointer hover:bg-orange-50 transition-colors"
+        >
+          <div class="col-span-2 font-bold flex items-center relative">
+            <div 
+              class="w-2 h-2 rounded-full mr-2"
+              :class="item.isReal ? 'bg-green-500' : 'bg-gray-300'"
+            ></div>
+            <span :class="item.isReal ? 'text-gray-900' : 'text-gray-500'">
+              {{ item.category }}
+            </span>
+          </div>
+          
+          <div class="text-center" :class="item.isReal ? 'text-gray-600' : 'text-gray-400'">
+             <span v-if="item.quantity">x{{ item.quantity }}</span>
+             <span v-else>-</span>
+          </div>
+          
+          <div class="text-right font-bold" :class="item.isReal ? 'text-gray-900' : 'text-gray-400'">
+            ¥ {{ formatNumber(item.amount) }}
+          </div>
         </div>
-      </el-col>
-    </el-row>
+      </div>
+    </div>
 
-    <!-- 原有图表区 -->
-    <el-row :gutter="20" class="mb-6">
-      <el-col :xs="24" :md="12" class="mb-6 md:mb-0">
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-orange-500 pl-2">本月成本结构</h3>
-          <div id="pieChart" style="height: 350px; width: 100%;"></div>
+    <!-- 6. 快捷入口 -->
+    <div class="grid grid-cols-2 gap-3 mb-6">
+      <button @click="openModal('买饲料')" class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform h-24 group hover:border-green-200 relative overflow-hidden">
+        <div class="absolute top-0 right-0 bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-bl-lg">库存</div>
+        <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition-transform">🌿</div>
+        <span class="font-bold text-gray-700 text-sm">进大车饲料</span>
+      </button>
+
+      <button @click="openModal('骆驼交易')" class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform h-24 group hover:border-orange-200">
+        <div class="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-2xl mb-2 group-hover:scale-110 transition-transform">🐪</div>
+        <span class="font-bold text-gray-700 text-sm">骆驼买卖</span>
+      </button>
+
+      <button @click="openModal('其他')" class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center active:scale-95 transition-transform h-24 group hover:border-purple-200 col-span-2">
+        <div class="flex items-center justify-center gap-2">
+           <div class="text-xl">📝</div>
+           <span class="font-bold text-gray-700 text-sm">记一笔 (额外零花)</span>
         </div>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-blue-500 pl-2">近半年利润趋势</h3>
-          <div id="barChart" style="height: 350px; width: 100%;"></div>
-        </div>
-      </el-col>
-    </el-row>
+      </button>
+    </div>
 
-    <!-- 明细报表区 (支持行内编辑) -->
-    <el-card shadow="never">
-      <el-tabs v-model="activeTab">
-        <!-- 收入表格 -->
-        <el-tab-pane label="收入明细" name="income">
-          <el-table :data="rawIncome" stripe style="width: 100%" height="400">
-            <el-table-column prop="date" label="日期" width="120" sortable />
-            
-            <el-table-column label="品类" width="160">
-              <template #default="{ row }">
-                <el-input v-if="isEditing(row.id)" v-model="editForm.category" size="small" />
-                <el-tag v-else effect="light">{{ row.category }}</el-tag>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="数量" width="100">
-              <template #default="{ row }">
-                <el-input-number v-if="isEditing(row.id)" v-model="editForm.quantity" size="small" :min="1" :controls="false" style="width:80px" />
-                <span v-else>{{ row.quantity }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="单价" width="100">
-               <template #default="{ row }">
-                <el-input-number v-if="isEditing(row.id)" v-model="editForm.unit_price" size="small" :min="0" :controls="false" style="width:80px" />
-                <span v-else>{{ row.unit_price }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="总金额" sortable>
-              <template #default="{ row }">
-                <!-- 编辑时自动计算显示，不让直接改总金额 -->
-                <span v-if="isEditing(row.id)" class="text-gray-400">¥ {{ (editForm.quantity * editForm.unit_price).toFixed(2) }}</span>
-                <span v-else class="font-bold text-green-600">+ ¥{{ formatNumber(row.amount) }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="操作" width="180" align="center">
-              <template #default="{ row }">
-                <div v-if="isEditing(row.id)">
-                  <el-button type="success" size="small" link @click="saveEdit('income', row.id)">保存</el-button>
-                  <el-button type="info" size="small" link @click="cancelEdit">取消</el-button>
-                </div>
-                <div v-else>
-                  <el-button type="primary" size="small" link @click="startEdit(row)">修改</el-button>
-                  <el-button type="danger" size="small" link @click="handleDelete(row, 'income')">删除</el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-        
-        <!-- 成本表格 -->
-        <el-tab-pane label="成本明细" name="cost">
-          <el-table :data="rawCost" stripe style="width: 100%" height="400">
-            <el-table-column prop="date" label="日期" width="120" sortable />
-            
-            <el-table-column label="项目" width="160">
-              <template #default="{ row }">
-                <el-input v-if="isEditing(row.id)" v-model="editForm.category" size="small" />
-                <span v-else>{{ row.category }}</span>
-              </template>
-            </el-table-column>
-
-             <el-table-column label="数量" width="100">
-              <template #default="{ row }">
-                <el-input-number v-if="isEditing(row.id)" v-model="editForm.quantity" size="small" :min="1" :controls="false" style="width:80px" />
-                <span v-else>{{ row.quantity || '-' }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="单价" width="100">
-               <template #default="{ row }">
-                <el-input-number v-if="isEditing(row.id)" v-model="editForm.unit_price" size="small" :min="0" :controls="false" style="width:80px" />
-                <span v-else>{{ row.unit_price || '-' }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="支出金额" sortable>
-              <template #default="{ row }">
-                <span v-if="isEditing(row.id)" class="text-gray-400">¥ {{ (editForm.quantity * editForm.unit_price).toFixed(2) }}</span>
-                <span v-else class="font-bold text-red-500">- ¥{{ formatNumber(row.amount) }}</span>
-              </template>
-            </el-table-column>
-
-            <el-table-column label="操作" width="180" align="center">
-              <template #default="{ row }">
-                <div v-if="isEditing(row.id)">
-                  <el-button type="success" size="small" link @click="saveEdit('cost', row.id)">保存</el-button>
-                  <el-button type="info" size="small" link @click="cancelEdit">取消</el-button>
-                </div>
-                <div v-else>
-                  <el-button type="primary" size="small" link @click="startEdit(row)">修改</el-button>
-                  <el-button type="danger" size="small" link @click="handleDelete(row, 'cost')">删除</el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
-
+    <!-- 组件 -->
+    <SetupWizard ref="wizardRef" @finish="initData" />
     <AddRecordModal ref="addModalRef" @success="refreshAll" />
+    <FeedStatModal ref="feedStatRef" />
+    <EditRecordModal ref="editRecordRef" @refresh="refreshAll" />
   </div>
 </template>
 
 <script setup>
-import { Plus, Download, Delete } from '@element-plus/icons-vue' 
-import { ref, onMounted, computed, reactive, nextTick } from 'vue'
-import * as echarts from 'echarts'
-import * as XLSX from 'xlsx'
+import { ref, onMounted, computed, reactive } from 'vue'
+import { RefreshRight, Search, SwitchButton, DataAnalysis } from '@element-plus/icons-vue'
+import { supabase } from '../lib/supabase'
 import { ElMessage, ElMessageBox } from 'element-plus'
-
-import AddRecordModal from './AddRecordModal.vue'
 import { dataService } from '../api/dataService'
-import { supabase } from '../lib/supabase' // 用于登出
 
-const currentMonth = ref(new Date().toISOString().slice(0, 7))
-const activeTab = ref('income')
+import SetupWizard from './SetupWizard.vue'
+import AddRecordModal from './AddRecordModal.vue'
+import FeedStatModal from './FeedStatModal.vue'
+import EditRecordModal from './EditRecordModal.vue'
+
+const wizardRef = ref(null)
 const addModalRef = ref(null)
-const rawIncome = ref([])
-const rawCost = ref([])
+const feedStatRef = ref(null)
+const editRecordRef = ref(null)
 
-let pieChartInstance = null
-let barChartInstance = null
-let dailyChartInstance = null // NEW
+const herdSize = reactive({ 
+  total: 0, milking: 0, 
+  milk_frequency: 1, milk_quantity_per_time: 0, milk_price: 0 
+})
+const dailyTemplate = ref([]) 
+const rawTodayCosts = ref([]) 
+const milkLoading = ref(false)
 
-// 编辑状态管理
-const editingId = ref(null)
-const editForm = reactive({})
+// --- 数据计算逻辑 ---
 
-// 核心计算
-const stats = computed(() => {
-  const incomeTotal = rawIncome.value.reduce((sum, item) => sum + Number(item.amount), 0)
-  const fixedTotal = rawCost.value.filter(i => i.cost_type === '固定成本').reduce((sum, i) => sum + Number(i.amount), 0)
-  const variableTotal = rawCost.value.filter(i => i.cost_type === '变动成本').reduce((sum, i) => sum + Number(i.amount), 0)
-  return { income: incomeTotal, fixedCost: fixedTotal, variableCost: variableTotal, profit: incomeTotal - fixedTotal - variableTotal }
+// 1. 每日支出模板总额
+const templateTotalCost = computed(() => {
+  return dailyTemplate.value.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0).toFixed(0)
 })
 
-const formatNumber = (num) => Number(num).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// 2. 预估效益计算 (基于模板，非今日实账)
+// 公式：(日均收入 - 日均支出) * 30 or 365
+const projected = computed(() => {
+  // 日均收入 = (每次量 / 间隔天数) * 单价
+  const freq = herdSize.milk_frequency || 1
+  const dailyIncome = (herdSize.milk_quantity_per_time / freq) * herdSize.milk_price
+  
+  // 日均支出 = 模板总额 (不含额外大额支出)
+  const dailyCost = Number(templateTotalCost.value)
+  
+  const dailyProfit = dailyIncome - dailyCost
+  
+  return {
+    dayIncome: formatNumber(dailyIncome),
+    dayCost: formatNumber(dailyCost),
+    monthProfit: formatNumber(dailyProfit * 30),
+    yearProfit: formatNumber(dailyProfit * 365)
+  }
+})
 
-const handleAdd = () => addModalRef.value.open()
-const handleLogout = async () => {
-  await supabase.auth.signOut()
-  window.location.reload()
-}
-
-// 获取数据
-const fetchMonthData = async () => {
-  const { income, cost } = await dataService.getDataByMonth(currentMonth.value)
-  rawIncome.value = income
-  rawCost.value = cost
-  updatePieChart()
-  updateDailyChart() // NEW
-}
-
-const fetchTrendData = async () => {
-  const { income, cost } = await dataService.getTrendData()
-  updateBarChart(income, cost)
-}
-
-const refreshAll = () => {
-  fetchMonthData()
-  fetchTrendData()
-}
-
-// --- 行内编辑逻辑 ---
-const isEditing = (id) => editingId.value === id
-
-const startEdit = (row) => {
-  editingId.value = row.id
-  // 复制当前行数据到编辑表单
-  Object.assign(editForm, {
-    category: row.category,
-    quantity: row.quantity || 1,
-    unit_price: row.unit_price || row.amount // 兼容旧数据
+// 3. 混合列表与额外账单逻辑 (保持不变)
+const mergedDailyList = computed(() => {
+  const list = []
+  dailyTemplate.value.forEach(tpl => {
+    const realItem = rawTodayCosts.value.find(r => r.category === tpl.name && r.cost_type === '日常支出')
+    if (realItem) {
+      list.push({ ...realItem, isReal: true })
+    } else {
+      list.push({
+        category: tpl.name,
+        quantity: tpl.quantity,
+        unit_price: tpl.unit_price,
+        amount: tpl.quantity * tpl.unit_price,
+        weight: tpl.name.includes('草') || tpl.name.includes('料') ? (tpl.quantity * 0.001) : 0,
+        isReal: false,
+        cost_type: '日常支出'
+      })
+    }
   })
-}
+  return list.sort((a, b) => b.amount - a.amount)
+})
 
-const cancelEdit = () => {
-  editingId.value = null
-}
+const extraCosts = computed(() => {
+  return rawTodayCosts.value.filter(item => {
+    if (['库存进货', '固定成本', '其他'].includes(item.cost_type)) return true
+    const isInTemplate = dailyTemplate.value.some(tpl => tpl.name === item.category)
+    return !isInTemplate
+  })
+})
+const extraCostTotal = computed(() => extraCosts.value.reduce((s, i) => s + Number(i.amount), 0).toFixed(0))
 
-const saveEdit = async (table, id) => {
+
+// --- 交互方法 ---
+
+const formatNumber = (n) => Number(n).toLocaleString('zh-CN', { maximumFractionDigits: 0 })
+
+// 保存奶款 (入账 + 更新默认值，但不改频率，因为频率是初始预设的，日常不用填)
+const saveMilkIncome = async () => {
+  milkLoading.value = true
   try {
-    const newAmount = editForm.quantity * editForm.unit_price
-    await dataService.updateRecord(table, id, {
-      category: editForm.category,
-      quantity: editForm.quantity,
-      unit_price: editForm.unit_price,
-      amount: newAmount
+    const { data: { user } } = await supabase.auth.getUser()
+    const today = new Date().toISOString().slice(0, 10)
+    const amount = herdSize.milk_quantity_per_time * herdSize.milk_price
+
+    // 1. 记账
+    await dataService.addIncome({
+      date: today,
+      category: '驼奶销售',
+      quantity: herdSize.milk_quantity_per_time,
+      unit_price: herdSize.milk_price,
+      amount: amount
     })
-    ElMessage.success('更新成功')
-    editingId.value = null
+
+    // 2. 更新设置 (只更新 量 和 价，保留 频率 不变)
+    // 这样下次进来，量和价是这次填的，方便微调
+    await supabase.from('settings').update({
+      milk_quantity_per_time: herdSize.milk_quantity_per_time,
+      milk_price: herdSize.milk_price
+    }).eq('user_id', user.id)
+
+    ElMessage.success(`已入账 ¥${amount}`)
     refreshAll()
-  } catch (error) {
-    ElMessage.error('更新失败')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    milkLoading.value = false
   }
 }
 
-// --- 图表逻辑 ---
+const editRecord = (item) => {
+  editRecordRef.value.open(item)
+}
 
-// NEW: 每日图表更新
-const updateDailyChart = () => {
-  if (!dailyChartInstance) return
-  
-  // 1. 获取当月所有天数
-  const [year, month] = currentMonth.value.split('-')
-  const daysInMonth = new Date(year, month, 0).getDate()
-  const days = Array.from({length: daysInMonth}, (_, i) => i + 1) // [1, 2, ..., 30]
-
-  // 2. 映射每日收入和支出
-  const dailyIncome = new Array(daysInMonth).fill(0)
-  const dailyCost = new Array(daysInMonth).fill(0)
-
-  rawIncome.value.forEach(item => {
-    const day = parseInt(item.date.split('-')[2])
-    if (day) dailyIncome[day-1] += Number(item.amount)
-  })
-  
-  rawCost.value.forEach(item => {
-    const day = parseInt(item.date.split('-')[2])
-    if (day) dailyCost[day-1] += Number(item.amount)
-  })
-
-   dailyChartInstance.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { 
-      data: ['收入', '支出'],
-      top: '0%', // 🔴 修复1：图例置顶
-      left: 'center'
-    },
-    grid: { 
-      top: '40px',   // 🔴 修复2：图表主体下移 40px，防止重叠
-      left: '2%', 
-      right: '4%', 
-      bottom: '3%', 
-      containLabel: true 
-    },
-    xAxis: { type: 'category', data: days.map(d => `${d}日`) },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '收入', type: 'line', smooth: true, data: dailyIncome, itemStyle: { color: '#3ba272' }, areaStyle: { opacity: 0.1 } },
-      { name: '支出', type: 'line', smooth: true, data: dailyCost, itemStyle: { color: '#ee6666' }, areaStyle: { opacity: 0.1 } }
-    ]
+const handleDebugReset = () => {
+  ElMessageBox.confirm('这将清空所有账单（保留设置模板），重新开始记账。', '危险操作', {
+    confirmButtonText: '确定重置',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('income').delete().eq('user_id', user.id)
+    await supabase.from('cost').delete().eq('user_id', user.id)
+    await supabase.from('settings').delete().eq('user_id', user.id)
+    window.location.reload()
   })
 }
 
-const updatePieChart = () => {
-  if (!pieChartInstance) return
-  const dist = {}
-  rawCost.value.forEach(item => {
-    dist[item.category] = (dist[item.category] || 0) + Number(item.amount)
-  })
-  const data = Object.keys(dist).map(k => ({ name: k, value: dist[k] }))
+// 数据加载
+const initData = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
 
-  pieChartInstance.setOption({
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'pie', 
-      radius: ['40%', '60%'],
-      center: ['50%', '50%'],
-      data: data.length ? data : [{ name: '无数据', value: 0 }]
-    }]
-  })
-}
-
-const updateBarChart = (allIncome, allCost) => {
-  if (!barChartInstance) return
-  const months = []
-  const d = new Date()
-  for (let i = 0; i < 6; i++) {
-    months.unshift(d.toISOString().slice(0, 7))
-    d.setMonth(d.getMonth() - 1)
+  const { data: settings } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+  
+  if (settings) {
+    herdSize.total = settings.total_camels
+    herdSize.milking = settings.milking_camels
+    herdSize.milk_frequency = settings.milk_frequency || 1
+    herdSize.milk_quantity_per_time = settings.milk_quantity_per_time || 0
+    herdSize.milk_price = settings.milk_price || 0
+    dailyTemplate.value = settings.daily_template || []
   }
-  const values = months.map(m => {
-    const inc = allIncome.filter(i => i.date.startsWith(m)).reduce((s, i) => s + Number(i.amount), 0)
-    const cst = allCost.filter(c => c.date.startsWith(m)).reduce((s, c) => s + Number(c.amount), 0)
-    return (inc - cst).toFixed(0)
-  })
 
-  barChartInstance.setOption({
-    tooltip: { trigger: 'axis' },
-    grid: { top: '15%', bottom: '5%', left: '2%', right: '2%', containLabel: true },
-    xAxis: { type: 'category', data: months },
-    yAxis: { type: 'value' },
-    series: [{
-      data: values, type: 'bar', barWidth: '40%',
-      itemStyle: { color: params => params.value >= 0 ? '#3ba272' : '#ee6666', borderRadius: [4, 4, 0, 0] }
-    }]
-  })
+  const today = new Date().toISOString().slice(0, 10)
+  const { data: costs } = await supabase.from('cost').select('*').eq('date', today)
+  rawTodayCosts.value = costs || []
 }
 
-const handleExport = () => {
-  const summaryData = [
-    ['报表月份', currentMonth.value],
-    ['总收入', stats.value.income],
-    ['净利润', stats.value.profit]
-  ]
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData)
-
-  const incomeRows = rawIncome.value.map(item => ({
-    日期: item.date, 类型: '收入', 分类: item.category, 
-    数量: item.quantity, 单价: item.unit_price, 金额: item.amount
-  }))
-  const costRows = rawCost.value.map(item => ({
-    日期: item.date, 类型: '支出', 分类: item.category, 
-    数量: item.quantity, 单价: item.unit_price, 金额: -item.amount
-  }))
-
-  const wsDetails = XLSX.utils.json_to_sheet([...incomeRows, ...costRows].sort((a,b)=>a.日期.localeCompare(b.日期)))
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, wsSummary, "汇总")
-  XLSX.utils.book_append_sheet(wb, wsDetails, "明细")
-  XLSX.writeFile(wb, `报表_${currentMonth.value}.xlsx`)
-}
-
-const handleDelete = (row, type) => {
-  ElMessageBox.confirm('确定删除?', '警告', { type: 'warning' })
-    .then(async () => {
-      await dataService.deleteRecord(type, row.id)
-      ElMessage.success('删除成功')
-      refreshAll()
-    })
-    .catch(() => {})
-}
+const refreshAll = () => initData()
+const openModal = (s) => addModalRef.value.openWithScene(s)
+const openFeedStats = () => feedStatRef.value.open()
+const handleLogout = async () => { await supabase.auth.signOut(); window.location.reload() }
 
 onMounted(() => {
-  setTimeout(() => {
-    const pieEl = document.getElementById('pieChart')
-    const barEl = document.getElementById('barChart')
-    const dailyEl = document.getElementById('dailyChart') // NEW
-
-    if (pieEl) pieChartInstance = echarts.init(pieEl)
-    if (barEl) barChartInstance = echarts.init(barEl)
-    if (dailyEl) dailyChartInstance = echarts.init(dailyEl) // NEW
-
-    window.addEventListener('resize', () => {
-      pieChartInstance && pieChartInstance.resize()
-      barChartInstance && barChartInstance.resize()
-      dailyChartInstance && dailyChartInstance.resize()
-    })
-    refreshAll()
-  }, 100)
+  setTimeout(() => { if (wizardRef.value) wizardRef.value.check() }, 500)
+  initData()
 })
 </script>
+
+<style>
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
