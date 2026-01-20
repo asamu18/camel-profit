@@ -94,20 +94,54 @@ export default defineConfig({
 File: src\App.vue
 --------------------------------------------------
 <template>
-  <Dashboard />
+  <Login v-if="!session" />
+  <div v-else class="min-h-screen bg-[#FDFBF7] pb-24 max-w-md mx-auto shadow-xl border-x border-gray-100">
+    <header class="bg-[#8B5E3C] text-white p-6 rounded-b-3xl shadow-lg">
+      <h1 class="text-2xl font-bold">驼账宝</h1>
+      <p class="text-sm opacity-80 mt-1">简单、直白，养驼人的记账神器</p>
+    </header>
+
+    <main class="p-4">
+      <router-view />
+    </main>
+
+    <!-- 底部导航 -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex justify-around py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40">
+      <router-link to="/" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
+        <el-icon :size="20"><Money /></el-icon><span class="text-[10px] font-medium">首页</span>
+      </router-link>
+      <div class="-mt-10">
+        <button @click="triggerAddMilk" class="p-4 rounded-full shadow-xl bg-[#F59E0B] text-white border-4 border-white active:scale-95 transition-transform">
+          <el-icon :size="24"><Plus /></el-icon>
+        </button>
+      </div>
+      <router-link to="/history" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
+        <el-icon :size="20"><Clock /></el-icon><span class="text-[10px] font-medium">历史</span>
+      </router-link>
+    </nav>
+  </div>
 </template>
 
 <script setup>
-import Dashboard from './components/Dashboard.vue'
-</script>
+import { ref, onMounted } from 'vue'
+import { supabase } from './lib/supabase'
+import Login from './components/Login.vue'
+import { Money, Plus, Clock } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 
-<style>
-/* 简单的全局背景色 */
-body {
-  margin: 0;
-  background-color: #f5f7fa;
+const session = ref(null)
+const router = useRouter()
+
+const triggerAddMilk = () => {
+  // 触发首页的弹窗逻辑，或者跳转
+  router.push({ path: '/', query: { action: 'addMilk' }})
 }
-</style>
+
+onMounted(() => {
+  supabase.auth.getSession().then(({ data }) => { session.value = data.session })
+  supabase.auth.onAuthStateChange((_event, _session) => { session.value = _session })
+})
+</script>
 
 ==================================================
 
@@ -117,11 +151,32 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
+import router from './router' // 引入路由
 
 const app = createApp(App)
 app.use(ElementPlus)
+app.use(router) // 挂载路由
 app.mount('#app')
 
+==================================================
+
+File: src\router.js
+--------------------------------------------------
+import { createRouter, createWebHistory } from 'vue-router'
+import Dashboard from './components/Dashboard.vue'
+import HistoryView from './components/HistoryView.vue' // 改为直接引入
+
+const routes = [
+  { path: '/', component: Dashboard },
+  { path: '/history', component: HistoryView } // 使用组件
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+
+export default router
 
 ==================================================
 
@@ -215,31 +270,57 @@ File: src\api\dataService.js
 import { supabase } from '../lib/supabase'
 
 export const dataService = {
-  // 1. 新增收入
+  // 获取当前用户ID
+  async _getUserId() {
+    const { data: { user } } = await supabase.auth.getUser()
+    return user?.id
+  },
+
+  // 1. 新增收入 (自动带入 user_id)
   async addIncome(record) {
-    const { data, error } = await supabase.from('income').insert([record]).select()
+    const user_id = await this._getUserId()
+    const { data, error } = await supabase.from('income').insert([{ ...record, user_id }]).select()
     if (error) throw error
     return data
   },
 
-  // 2. 新增成本
+  // 2. 新增成本 (支持数量、单价，自动带入 user_id)
   async addCost(record) {
-    const { data, error } = await supabase.from('cost').insert([record]).select()
+    const user_id = await this._getUserId()
+    // record 应该包含 quantity, unit_price, cost_type, category, amount, date
+    const { data, error } = await supabase.from('cost').insert([{ ...record, user_id }]).select()
     if (error) throw error
     return data
   },
 
-  // 3. 按月份获取 (修复版：自动计算月底日期)
+  // 3. 更新记录 (NEW: 用于行内编辑)
+  async updateRecord(table, id, updates) {
+    // table: 'income' 或 'cost'
+    const { error } = await supabase
+      .from(table)
+      .update(updates)
+      .eq('id', id)
+    
+    if (error) throw error
+    return true
+  },
+
+  // 4. 获取历史分类 (NEW: 用于自定义分类下拉提示)
+  async getUniqueCategories(type) {
+    const table = type === 'income' ? 'income' : 'cost'
+    // 获取当前用户该表下所有的分类，用于前端去重
+    const { data, error } = await supabase.from(table).select('category')
+    if (error) return []
+    // 简单的去重逻辑
+    return [...new Set(data.map(item => item.category))]
+  },
+
+  // 5. 按月份获取 (保持不变)
   async getDataByMonth(monthStr) {
-    // monthStr 格式为 "2025-04"
     const [year, month] = monthStr.split('-')
-    
-    // JS技巧：new Date(year, month, 0) 会自动得到该月的最后一天
-    // 这里的 month 是字符串 "04"，直接转数字作为下个月的索引，刚好符合 Date 的逻辑
     const lastDay = new Date(year, month, 0).getDate() 
-    
     const startDate = `${monthStr}-01`
-    const endDate = `${monthStr}-${lastDay}` // 动态生成 2025-04-30
+    const endDate = `${monthStr}-${lastDay}`
 
     const [incomeRes, costRes] = await Promise.all([
       supabase.from('income').select('*').gte('date', startDate).lte('date', endDate).order('date', { ascending: false }),
@@ -252,15 +333,13 @@ export const dataService = {
     return { income: incomeRes.data, cost: costRes.data }
   },
 
-  // --- NEW: 4. 获取最近 6 个月的趋势数据 ---
+  // 6. 获取趋势数据 (保持不变)
   async getTrendData() {
-    // 计算6个月前的日期
     const d = new Date()
     d.setMonth(d.getMonth() - 5)
     d.setDate(1)
-    const startDate = d.toISOString().slice(0, 10) // 格式 2023-05-01
+    const startDate = d.toISOString().slice(0, 10)
 
-    // 拉取这期间所有的收支
     const [incomeRes, costRes] = await Promise.all([
       supabase.from('income').select('date, amount').gte('date', startDate),
       supabase.from('cost').select('date, amount').gte('date', startDate)
@@ -269,20 +348,12 @@ export const dataService = {
     return { income: incomeRes.data, cost: costRes.data }
   },
   
-
-  // --- NEW: 5. 删除记录 (通用方法) ---
+  // 7. 删除记录 (保持不变)
   async deleteRecord(table, id) {
-    // table: 'income' 或 'cost'
-    // id: 要删除的记录ID
-    const { error } = await supabase
-      .from(table)
-      .delete()
-      .eq('id', id)
-    
+    const { error } = await supabase.from(table).delete().eq('id', id)
     if (error) throw error
     return true
   }
-
 }
 
 ==================================================
@@ -290,176 +361,268 @@ export const dataService = {
 File: src\components\AddRecordModal.vue
 --------------------------------------------------
 <template>
-  <el-dialog
-    v-model="visible"
-    title="新增记账"
-    width="90%" 
-    style="max-width: 500px;" 
-    center
-    destroy-on-close
-  >
-    <el-form :model="form" label-width="80px">
-      <!-- 1. 收支类型切换 -->
-      <el-form-item label="类型">
-        <el-radio-group v-model="form.type" @change="handleTypeChange">
-          <el-radio-button label="income">收入 (如驼奶)</el-radio-button>
-          <el-radio-button label="cost">成本 (如饲料)</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-
-      <!-- 2. 具体分类 (根据类型动态变) -->
-      <el-form-item label="分类">
-        <el-select
-          v-model="form.category"
-          placeholder="请选择"
-          style="width: 100%"
-          @change="autoFillCostType"
-        >
-          <el-option
-            v-for="opt in currentOptions"
-            :key="opt"
-            :label="opt"
-            :value="opt"
-          />
-        </el-select>
-      </el-form-item>
-
-      <!-- 3. 收入特有字段：数量 x 单价 -->
-      <div v-if="form.type === 'income'" class="bg-gray-50 p-4 rounded mb-4">
-        <el-form-item label="数量">
-          <el-input-number v-model="form.quantity" :min="1" style="width: 100%" />
+  <el-dialog v-model="visible" :title="sceneTitle" width="90%" style="max-width: 500px;" center destroy-on-close>
+    
+    <el-form :model="form" label-position="top">
+      
+      <!-- 场景 A: 卖奶 (保持不变) -->
+      <div v-if="scene === '卖奶'">
+        <!-- ... 原有卖奶代码保持不变 ... -->
+         <el-form-item label="日期">
+           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large"/>
         </el-form-item>
-        <el-form-item label="单价">
-          <el-input-number v-model="form.unit_price" :min="0" :precision="2" style="width: 100%" />
-        </el-form-item>
-        <div class="text-right text-gray-500 text-sm mt-2">
-          预计收入: <span class="text-green-600 font-bold text-lg">¥ {{ (form.quantity * form.unit_price).toFixed(2) }}</span>
+        <div class="flex gap-4">
+          <el-form-item label="数量 (公斤)" class="flex-1">
+            <el-input-number v-model="form.quantity" :min="1" style="width: 100%" size="large" />
+          </el-form-item>
+          <el-form-item label="单价 (元/公斤)" class="flex-1">
+            <el-input-number v-model="form.unit_price" :min="0.1" :precision="2" style="width: 100%" size="large" />
+          </el-form-item>
+        </div>
+        <div class="bg-blue-50 p-3 rounded text-center text-blue-800 font-bold mb-4">
+          总收入: ¥ {{ (form.quantity * form.unit_price).toFixed(2) }}
         </div>
       </div>
 
-      <!-- 4. 成本特有字段：属性 + 总额 -->
-      <div v-if="form.type === 'cost'">
-        <el-form-item label="属性">
-          <el-tag :type="form.cost_type === '固定成本' ? 'info' : 'warning'">
-            {{ form.cost_type || '请选择分类' }}
-          </el-tag>
+      <!-- 🔴 场景 B: 进大车饲料 (重写) 🔴 -->
+      <div v-if="scene === '买饲料'">
+        <div class="bg-green-50 p-3 rounded-lg mb-4 text-xs text-green-800 border border-green-200">
+          <el-icon><InfoFilled /></el-icon> 
+          系统会根据您的初始化模板，自动计算这车饲料能吃多久。
+        </div>
+
+        <el-form-item label="进货日期">
+           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large"/>
         </el-form-item>
-        <el-form-item label="总金额">
-          <el-input-number v-model="form.amount" :min="0" :precision="2" style="width: 100%" />
+        
+        <!-- 1. 选择饲料 (从模板里读，方便计算) -->
+        <el-form-item label="饲料名称 (选择或输入)">
+           <el-select 
+             v-model="form.category" 
+             filterable 
+             allow-create 
+             default-first-option
+             placeholder="请选择" 
+             size="large"
+             style="width: 100%"
+             @change="calculateDuration"
+           >
+             <el-option 
+               v-for="item in feedOptions" 
+               :key="item.name" 
+               :label="item.name" 
+               :value="item.name" 
+             />
+           </el-select>
+        </el-form-item>
+
+        <!-- 2. 金额与重量 -->
+        <div class="flex gap-3">
+          <el-form-item label="总金额 (元)" class="flex-1">
+            <el-input-number v-model="form.amount" :min="0" style="width: 100%" size="large" @change="calculateDuration" />
+          </el-form-item>
+          <el-form-item label="总重量 (吨)" class="flex-1">
+            <el-input-number v-model="form.weight" :min="0" :precision="2" style="width: 100%" size="large" />
+          </el-form-item>
+        </div>
+
+        <!-- 3. 智能计算结果 -->
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+          <div class="text-xs text-gray-500 mb-2">库存预估 (自动计算)</div>
+          
+          <div v-if="dailyUsageInfo" class="flex justify-between items-center mb-2 text-sm">
+             <span>日消耗标准:</span>
+             <span class="font-bold">¥{{ dailyUsageInfo.cost }}/天 ({{ dailyUsageInfo.weight }}kg)</span>
+          </div>
+
+          <el-form-item label="预计可用天数" class="mb-0">
+             <el-slider v-model="form.duration" :min="1" :max="365" show-input />
+          </el-form-item>
+          <div class="text-right text-xs text-orange-500 mt-1" v-if="form.duration > 0">
+            约 {{ (form.duration/30).toFixed(1) }} 个月
+          </div>
+        </div>
+      </div>
+
+      <!-- 场景 C: 骆驼交易 (保持不变) -->
+      <div v-if="scene === '骆驼交易'">
+        <el-tabs type="card" v-model="camelType">
+          <el-tab-pane label="卖骆驼 (收入)" name="sell"></el-tab-pane>
+          <el-tab-pane label="买骆驼 (支出)" name="buy"></el-tab-pane>
+        </el-tabs>
+        <el-form-item label="交易日期">
+           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large" />
+        </el-form-item>
+        <el-form-item label="数量 (头/峰)">
+          <el-input-number v-model="form.quantity" :min="1" style="width: 100%" size="large" />
+        </el-form-item>
+        <el-form-item label="总金额 (元)">
+          <el-input-number v-model="form.amount" :min="0" style="width: 100%" size="large" />
         </el-form-item>
       </div>
 
-      <el-form-item label="日期">
-        <el-date-picker
-          v-model="form.date"
-          type="date"
-          value-format="YYYY-MM-DD"
-          style="width: 100%"
-          :clearable="false"
-        />
-      </el-form-item>
+      <!-- 场景 D: 其他 (保持不变) -->
+      <div v-if="scene === '其他'">
+        <el-radio-group v-model="form.type" class="mb-4">
+          <el-radio-button label="income">收入</el-radio-button>
+          <el-radio-button label="cost">支出</el-radio-button>
+        </el-radio-group>
+        <el-form-item label="项目名称">
+          <el-input v-model="form.category" placeholder="如：兽药、水电费" size="large" />
+        </el-form-item>
+        <el-form-item label="金额">
+          <el-input-number v-model="form.amount" :min="0" style="width: 100%" size="large" />
+        </el-form-item>
+        <el-form-item label="日期">
+           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large" />
+        </el-form-item>
+      </div>
+
     </el-form>
 
     <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="loading" @click="submitForm">
-          确认录入
-        </el-button>
-      </span>
+      <el-button @click="visible = false" size="large">取消</el-button>
+      <el-button type="primary" :loading="loading" @click="submit" size="large" class="w-32">
+        确认
+      </el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
+import { dataService } from '../api/dataService'
+import { supabase } from '../lib/supabase' // 引入 supabase
 import { ElMessage } from 'element-plus'
-import { dataService } from '../api/dataService' // 引入昨天的API
+import { InfoFilled } from '@element-plus/icons-vue'
 
-// --- 1. 字典定义 ---
-const incomeOptions = ['驼奶销售', '种驼交易', '观光门票', '其他']
-const costOptions = ['饲料', '医疗', '水电', '工资', '租金', '设备折旧']
-const costMap = {
-  '饲料': '变动成本', '医疗': '变动成本', '水电': '变动成本',
-  '工资': '变动成本', '租金': '固定成本', '设备折旧': '固定成本'
-}
-
-// --- 2. 状态定义 ---
 const visible = ref(false)
+const scene = ref('卖奶') 
 const loading = ref(false)
-const emit = defineEmits(['success']) // 定义成功事件，通知父组件刷新
+const camelType = ref('sell') 
+const emit = defineEmits(['success'])
+
+// 存储用户的设置模板，用于计算饲料消耗
+const userTemplate = ref([])
 
 const form = reactive({
-  type: 'income',
-  category: '',
-  quantity: 1,
-  unit_price: 0,
-  amount: 0,
-  cost_type: '',
-  date: new Date().toISOString().slice(0, 10)
+  date: '', quantity: 1, unit_price: 30, amount: 0, category: '', type: 'income', duration: 30, weight: 0
 })
 
-// --- 3. 计算属性 ---
-const currentOptions = computed(() => form.type === 'income' ? incomeOptions : costOptions)
+// 过滤出模板里的饲料选项
+const feedOptions = computed(() => {
+  return userTemplate.value.filter(item => 
+    item.name.includes('草') || 
+    item.name.includes('料') || 
+    item.name.includes('豆') || 
+    item.name.includes('玉米')
+  )
+})
 
-// --- 4. 逻辑方法 ---
-const open = () => {
+// 当前选中的饲料的日消耗信息
+const dailyUsageInfo = computed(() => {
+  if (scene.value !== '买饲料' || !form.category) return null
+  const tplItem = userTemplate.value.find(i => i.name === form.category)
+  if (!tplItem) return null
+  return {
+    cost: (tplItem.quantity * tplItem.unit_price).toFixed(0),
+    weight: tplItem.quantity // 假设模板里的 quantity 就是每天喂的公斤数/单位数
+  }
+})
+
+const sceneTitle = computed(() => {
+  return { '卖奶': '今日卖奶', '买饲料': '进大车饲料', '骆驼交易': '骆驼买卖', '其他': '记一笔' }[scene.value]
+})
+
+// 打开弹窗时，先去拉取最新的设置，为了计算准
+const openWithScene = async (s) => {
+  scene.value = s
   visible.value = true
-  // 重置部分数据，保留日期
-  form.category = ''
+  
+  // 重置表单
+  form.date = new Date().toISOString().slice(0, 10)
   form.amount = 0
-}
-
-const handleTypeChange = () => {
+  form.quantity = 1
+  form.duration = 30 
+  form.weight = 0
   form.category = ''
-  form.amount = 0
-  form.cost_type = ''
-}
 
-// 自动填充成本属性（演示亮点）
-const autoFillCostType = () => {
-  if (form.type === 'cost') {
-    form.cost_type = costMap[form.category] || '变动成本'
+  if (s === '卖奶') {
+    form.category = '驼奶销售'
+    // 这里可以优化：去读 herdSize 里的默认奶价，暂略
+    form.unit_price = 30 
+  }
+
+  // 🔴 关键：拉取用户模板 🔴
+  if (s === '买饲料') {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { data } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).single()
+    if (data && data.daily_template) {
+      userTemplate.value = data.daily_template
+    }
   }
 }
 
-const submitForm = async () => {
-  if (!form.category) return ElMessage.warning('请选择分类')
+// 自动计算持续天数
+const calculateDuration = () => {
+  if (!dailyUsageInfo.value || form.amount <= 0) return
   
+  const dailyCost = Number(dailyUsageInfo.value.cost)
+  if (dailyCost > 0) {
+    // 总金额 / 每天消耗金额 = 能吃几天
+    const days = Math.round(form.amount / dailyCost)
+    form.duration = days > 0 ? days : 1
+  }
+}
+
+const submit = async () => {
   loading.value = true
   try {
-    // 准备数据对象
-    const baseData = {
-      date: form.date,
-      category: form.category,
-      amount: form.amount
+    if (scene.value === '卖奶') {
+      await dataService.addIncome({
+        date: form.date, category: '驼奶销售', 
+        quantity: form.quantity, unit_price: form.unit_price, 
+        amount: form.quantity * form.unit_price
+      })
+    } 
+    else if (scene.value === '买饲料') {
+      if (!form.category) form.category = '未知饲料'
+      await dataService.addCost({
+        date: form.date, 
+        category: form.category, 
+        amount: form.amount, 
+        weight: form.weight, // 记录重量
+        cost_type: '库存进货', // 标记类型
+        duration: form.duration // 存入可用天数 (影响进度条)
+      })
+    }
+    else if (scene.value === '骆驼交易') {
+      const isSell = camelType.value === 'sell'
+      const data = {
+        date: form.date, category: isSell ? '卖骆驼' : '买骆驼',
+        quantity: form.quantity, amount: form.amount
+      }
+      if (isSell) await dataService.addIncome(data)
+      else await dataService.addCost({ ...data, cost_type: '固定成本' })
+    }
+    else {
+      // 其他
+      const data = { date: form.date, category: form.category, amount: form.amount }
+      if (form.type === 'income') await dataService.addIncome(data)
+      else await dataService.addCost({ ...data, cost_type: '其他' })
     }
 
-    if (form.type === 'income') {
-      // 收入：计算总额
-      baseData.quantity = form.quantity
-      baseData.unit_price = form.unit_price
-      baseData.amount = form.quantity * form.unit_price // 核心：计算后入库
-      await dataService.addIncome(baseData)
-    } else {
-      // 成本：带上cost_type
-      baseData.cost_type = form.cost_type
-      await dataService.addCost(baseData)
-    }
-
-    ElMessage.success('录入成功！')
+    ElMessage.success('记好了！')
     visible.value = false
-    emit('success') // 核心：告诉父组件“我存好了，快刷新”
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('录入失败，请查看控制台')
+    emit('success')
+  } catch (e) {
+    ElMessage.error(e.message)
   } finally {
     loading.value = false
   }
 }
 
-// 暴露 open 方法给父组件调用
-defineExpose({ open })
+defineExpose({ openWithScene })
 </script>
 
 ==================================================
@@ -467,385 +630,1178 @@ defineExpose({ open })
 File: src\components\Dashboard.vue
 --------------------------------------------------
 <template>
-  <div class="p-6 max-w-7xl mx-auto min-h-screen">
-    
-    <!-- 1. 顶部控制栏 (保持不变) -->
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-4">
-      <div class="flex items-center">
-        <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center text-white font-bold text-xl mr-3">驼</div>
-        <div>
-          <h1 class="text-xl font-bold text-gray-800">驼场利润计算系统</h1>
-          <p class="text-xs text-gray-500">数据月份：{{ currentMonth }}</p>
+  <div class="space-y-6">
+    <!-- AI 建议位 (改为本地状态建议) -->
+    <div class="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-center gap-3">
+      <div class="text-2xl">🐫</div>
+      <p class="text-amber-900 text-sm font-medium">{{ advice }}</p>
+    </div>
+
+    <!-- 数据看板 -->
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
+        <span class="text-gray-400 text-sm">今日交奶收入</span>
+        <span class="text-2xl font-bold text-emerald-500">￥{{ todayIncome }}</span>
+        <div v-if="hasTodayMilk" class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12">
+          <el-icon :size="60"><CircleCheckFilled /></el-icon>
         </div>
       </div>
-      <div class="flex gap-3 w-full md:w-auto overflow-x-auto pb-1">
-        <el-date-picker 
-          v-model="currentMonth" type="month" value-format="YYYY-MM" :clearable="false"
-          @change="refreshAll" placeholder="选择月份" style="width: 140px;"
-        />
-        <!-- 🆕 新增：导出按钮 -->
-        <el-button type="success" plain @click="handleExport">
-          <el-icon class="mr-1"><Download /></el-icon> 导出
-        </el-button>
+      <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32">
+        <span class="text-gray-400 text-sm">每日固定成本</span>
+        <span class="text-2xl font-bold text-rose-500">￥{{ dailyFixedCost }}</span>
+      </div>
+    </div>
+
+    <!-- 动态利润预估卡片 -->
+    <div class="bg-[#8B5E3C] p-6 rounded-[2.5rem] shadow-xl text-white">
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <h3 class="text-lg opacity-80">本月利润 (动态)</h3>
+          <p class="text-3xl font-bold mt-1">￥{{ formatNum(monthlyProfit) }}</p>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] bg-white/10 px-2 py-0.5 rounded-full block mb-1">已计入实际收支</span>
+          <span class="text-[10px] text-white/50">月额外支出: ￥{{ monthlyExtra }}</span>
+        </div>
+      </div>
+      <div class="pt-4 border-t border-white/10 flex items-center justify-between">
+        <div><p class="text-[10px] opacity-70">预计年利润</p><p class="text-lg font-bold">￥{{ formatNum(monthlyProfit * 12) }}</p></div>
+        <div class="text-right"><p class="text-[10px] opacity-50 italic">*实际收入越高，预估越准</p></div>
+      </div>
+    </div>
+
+    <!-- 快捷操作 -->
+    <div class="grid grid-cols-2 gap-4">
+      <button @click="openMilk" :class="hasTodayMilk ? 'bg-emerald-500' : 'bg-[#F59E0B]'" class="py-5 rounded-3xl font-bold text-lg shadow-md text-white flex flex-col items-center gap-1">
+        <span>{{ hasTodayMilk ? '✅ 今日已交' : '🥛 刚交了奶' }}</span>
+      </button>
+      <button @click="openExtra" class="bg-[#C4A484] text-white py-5 rounded-3xl font-bold text-lg shadow-md flex flex-col items-center gap-1">
+        <span>🚜 额外开销</span>
+      </button>
+    </div>
+
+    <!-- 复用你之前的弹窗 -->
+    <AddRecordModal ref="addModalRef" @success="syncData" />
+    <SetupWizard ref="wizardRef" @finish="syncData" />
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed, watch } from 'vue'
+import { supabase } from '../lib/supabase'
+import { CircleCheckFilled } from '@element-plus/icons-vue'
+import AddRecordModal from './AddRecordModal.vue'
+import SetupWizard from './SetupWizard.vue'
+import { useRoute } from 'vue-router'
+
+const addModalRef = ref(null)
+const wizardRef = ref(null)
+const route = useRoute()
+
+// 核心状态
+const income = ref([])
+const cost = ref([])
+const settings = ref(null)
+
+// 计算属性
+const todayIncome = computed(() => {
+  const today = new Date().toISOString().slice(0, 10)
+  return income.value.filter(i => i.date === today && i.category === '驼奶销售').reduce((s, i) => s + i.amount, 0)
+})
+const hasTodayMilk = computed(() => todayIncome.value > 0)
+const dailyFixedCost = computed(() => {
+  if (!settings.value?.daily_template) return 0
+  return settings.value.daily_template.reduce((s, i) => s + (i.quantity * i.unit_price), 0)
+})
+
+const monthlyExtra = computed(() => {
+  const now = new Date()
+  return cost.value.filter(c => {
+    const d = new Date(c.date)
+    return d.getMonth() === now.getMonth() && c.cost_type !== '日常支出'
+  }).reduce((s, i) => s + i.amount, 0)
+})
+
+const monthlyProfit = computed(() => {
+  // 简化版逻辑：(已收奶款 + 预估剩余奶款) - (固定成本*30) - (本月额外)
+  const now = new Date()
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysPassed = now.getDate()
+  
+  const actualMilk = income.value.filter(i => {
+    const d = new Date(i.date)
+    return d.getMonth() === now.getMonth() && i.category === '驼奶销售'
+  }).reduce((s, i) => s + i.amount, 0)
+
+  const dailyProjectedIncome = settings.value ? (settings.value.milk_quantity_per_time * settings.value.milk_price / (settings.value.milk_frequency || 1)) : 0
+  const projectedMilk = (daysInMonth - daysPassed) * dailyProjectedIncome
+  
+  return (actualMilk + projectedMilk) - (dailyFixedCost.value * daysInMonth) - monthlyExtra.value
+})
+
+const advice = computed(() => hasTodayMilk.value ? "今日已交奶，干得漂亮！" : "今天还没记交奶账呢，别忘了写上一笔。")
+
+// 同步逻辑
+const syncData = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  // 并行拉取
+  const [incRes, costRes, setRes] = await Promise.all([
+    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
+    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
+    supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+  ])
+
+  if (incRes.data) { income.value = incRes.data; localStorage.setItem('cache_inc', JSON.stringify(incRes.data)) }
+  if (costRes.data) { cost.value = costRes.data; localStorage.setItem('cache_cost', JSON.stringify(costRes.data)) }
+  if (setRes.data) { settings.value = setRes.data; localStorage.setItem('cache_set', JSON.stringify(setRes.data)) }
+}
+
+const openMilk = () => addModalRef.value.openWithScene('卖奶')
+const openExtra = () => addModalRef.value.openWithScene('其他')
+const formatNum = (n) => Math.max(0, n).toLocaleString(undefined, { maximumFractionDigits: 0 })
+
+onMounted(() => {
+  // 1. 加载缓存保证秒开
+  income.value = JSON.parse(localStorage.getItem('cache_inc') || '[]')
+  cost.value = JSON.parse(localStorage.getItem('cache_cost') || '[]')
+  settings.value = JSON.parse(localStorage.getItem('cache_set') || 'null')
+
+  // 2. 后台同步云端
+  syncData()
+  
+  // 检查向导
+  setTimeout(() => { if (wizardRef.value) wizardRef.value.check() }, 1000)
+})
+
+// 监听导航触发
+watch(() => route.query.action, (val) => {
+  if (val === 'addMilk') openMilk()
+})
+</script>
+
+==================================================
+
+File: src\components\EditRecordModal.vue
+--------------------------------------------------
+<template>
+  <el-dialog v-model="visible" :title="isCreateMode ? '确认/修改支出' : '修改账单'" width="90%" style="max-width: 400px;" center destroy-on-close>
+    
+    <el-form label-position="top">
+      
+      <!-- 1. 基本信息 -->
+      <el-form-item label="项目名称">
+        <el-input v-model="form.category" size="large" />
+      </el-form-item>
+      
+      <!-- 2. 金额修改 -->
+      <div class="flex gap-3">
+        <el-form-item label="单价" class="flex-1">
+          <el-input-number v-model="form.unit_price" :min="0" style="width: 100%" :controls="false" size="large" @change="calcTotal" />
+        </el-form-item>
+        <el-form-item label="数量" class="flex-1">
+          <el-input-number v-model="form.quantity" :min="0" style="width: 100%" :controls="false" size="large" @change="calcTotal" />
+        </el-form-item>
+      </div>
+
+      <el-form-item label="总金额 (元)">
+        <el-input-number v-model="form.amount" :min="0" :precision="2" style="width: 100%" size="large" />
+      </el-form-item>
+
+      <!-- 3. 日期修改 -->
+      <el-form-item label="日期">
+        <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large" />
+      </el-form-item>
+
+      <div v-if="form.weight > 0">
+        <el-form-item label="重量 (吨)">
+          <el-input-number v-model="form.weight" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+      </div>
+
+    </el-form>
+
+    <template #footer>
+      <div class="flex justify-between items-center">
+        <!-- 只有已存在的记录才能删除 -->
+        <el-button v-if="!isCreateMode" type="danger" link @click="handleDelete" :loading="loading">删除此条</el-button>
+        <span v-else></span> <!-- 占位符 -->
         
-        <el-button type="primary" @click="handleAdd">
-          <el-icon class="mr-1"><Plus /></el-icon> 新增
+        <div>
+          <el-button @click="visible = false">取消</el-button>
+          <el-button type="primary" @click="handleSave" :loading="loading">确定</el-button>
+        </div>
+      </div>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, reactive, computed } from 'vue'
+import { dataService } from '../api/dataService'
+import { supabase } from '../lib/supabase'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const visible = ref(false)
+const loading = ref(false)
+const emit = defineEmits(['refresh'])
+
+const currentRow = ref(null) 
+const form = reactive({ category: '', amount: 0, date: '', quantity: 0, weight: 0, unit_price: 0 })
+
+// 判断模式：有没有 ID？无 ID 则是从模板点击进来的“创建模式”
+const isCreateMode = computed(() => !currentRow.value?.id)
+
+const open = (row) => {
+  currentRow.value = row
+  // 初始化表单
+  form.category = row.category
+  form.amount = row.amount
+  form.date = row.date || new Date().toISOString().slice(0, 10)
+  form.quantity = row.quantity || 1
+  form.unit_price = row.unit_price || row.amount // 如果没有单价，暂时用总价代替
+  form.weight = row.weight || 0
+  
+  visible.value = true
+}
+
+const calcTotal = () => {
+  form.amount = form.quantity * form.unit_price
+}
+
+const handleSave = async () => {
+  loading.value = true
+  try {
+    const table = 'cost' // 这里主要是支出编辑，如果是收入逻辑要单独判断，但目前主要是改成本
+    
+    if (isCreateMode.value) {
+      // --- 新增模式 (从模板转实账) ---
+      const { data: { user } } = await supabase.auth.getUser()
+      const record = {
+        user_id: user.id,
+        date: form.date,
+        category: form.category,
+        quantity: form.quantity,
+        unit_price: form.unit_price,
+        amount: form.amount,
+        weight: form.weight,
+        cost_type: currentRow.value.cost_type || '日常支出'
+      }
+      await dataService.addCost(record)
+      ElMessage.success('已入账')
+    } else {
+      // --- 更新模式 ---
+      await dataService.updateRecord(table, currentRow.value.id, {
+        category: form.category,
+        amount: form.amount,
+        date: form.date,
+        quantity: form.quantity,
+        unit_price: form.unit_price,
+        weight: form.weight
+      })
+      ElMessage.success('修改成功')
+    }
+
+    visible.value = false
+    emit('refresh')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('操作失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleDelete = () => {
+  ElMessageBox.confirm('确定要删除这条记录吗？', '警告', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    loading.value = true
+    try {
+      await dataService.deleteRecord('cost', currentRow.value.id)
+      ElMessage.success('删除成功')
+      visible.value = false
+      emit('refresh')
+    } catch (e) {
+      ElMessage.error('删除失败')
+    } finally {
+      loading.value = false
+    }
+  }).catch(() => {})
+}
+
+defineExpose({ open })
+</script>
+
+==================================================
+
+File: src\components\FeedStatModal.vue
+--------------------------------------------------
+<template>
+  <el-dialog v-model="visible" title="饲料成本统计" width="90%" center>
+    
+    <div class="flex gap-2 mb-4">
+      <el-date-picker 
+        v-model="dateRange" 
+        type="daterange" 
+        range-separator="至" 
+        start-placeholder="开始" 
+        end-placeholder="结束"
+        value-format="YYYY-MM-DD"
+        size="small"
+        :clearable="false"
+        style="width: 100%"
+        @change="fetchStats"
+      />
+    </div>
+
+    <div v-loading="loading">
+      <!-- 汇总卡片 -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-green-50 p-3 rounded-lg text-center border border-green-100">
+          <div class="text-xs text-gray-500">总重量 (吨)</div>
+          <div class="text-xl font-bold text-green-700">{{ totalWeight }}</div>
+        </div>
+        <div class="bg-orange-50 p-3 rounded-lg text-center border border-orange-100">
+          <div class="text-xs text-gray-500">总花费 (元)</div>
+          <div class="text-xl font-bold text-orange-700">{{ totalCost }}</div>
+        </div>
+      </div>
+
+      <!-- 列表 -->
+      <div class="space-y-2 max-h-60 overflow-y-auto">
+        <div v-for="(item, idx) in list" :key="idx" class="flex justify-between items-center bg-gray-50 p-2 rounded text-sm">
+          <span class="font-bold text-gray-700">{{ item.name }}</span>
+          <div class="text-right">
+            <div class="text-xs text-gray-500">{{ item.weight }} 吨</div>
+            <div class="font-medium text-gray-900">¥ {{ item.amount }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { supabase } from '../lib/supabase'
+
+const visible = ref(false)
+const loading = ref(false)
+// 默认查最近30天
+const end = new Date()
+const start = new Date()
+start.setDate(start.getDate() - 30)
+const dateRange = ref([start.toISOString().slice(0,10), end.toISOString().slice(0,10)])
+const rawData = ref([])
+
+const open = () => {
+  visible.value = true
+  fetchStats()
+}
+
+const fetchStats = async () => {
+  if (!dateRange.value) return
+  loading.value = true
+  // 查找所有饲料相关的支出
+  const { data } = await supabase
+    .from('cost')
+    .select('*')
+    .gte('date', dateRange.value[0])
+    .lte('date', dateRange.value[1])
+    .or('category.ilike.%饲料%,category.ilike.%草%,category.ilike.%豆%,category.ilike.%料%') // 模糊匹配常见饲料名
+
+  rawData.value = data || []
+  loading.value = false
+}
+
+const totalWeight = computed(() => rawData.value.reduce((s, i) => s + (Number(i.weight)||0), 0).toFixed(2))
+const totalCost = computed(() => rawData.value.reduce((s, i) => s + Number(i.amount), 0).toFixed(0))
+
+// 按名称分组统计
+const list = computed(() => {
+  const map = {}
+  rawData.value.forEach(i => {
+    if (!map[i.category]) map[i.category] = { name: i.category, weight: 0, amount: 0 }
+    map[i.category].weight += (Number(i.weight) || 0)
+    map[i.category].amount += Number(i.amount)
+  })
+  return Object.values(map).sort((a,b) => b.amount - a.amount)
+})
+
+defineExpose({ open })
+</script>
+
+==================================================
+
+File: src\components\HistoryView.vue
+--------------------------------------------------
+<template>
+  <div class="space-y-4 pb-10">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="text-xl font-bold text-[#8B5E3C]">账单流水</h2>
+      <el-tag type="info" size="small" round>最近 50 条</el-tag>
+    </div>
+
+    <!-- 列表为空时 -->
+    <div v-if="historyList.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-400">
+      <el-icon :size="60" class="opacity-20"><Document /></el-icon>
+      <p class="mt-2">还没有任何记录</p>
+    </div>
+
+    <!-- 记录列表 -->
+    <div v-else class="space-y-3">
+      <div 
+        v-for="item in historyList" 
+        :key="item.id" 
+        class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between group animate-in fade-in duration-300"
+      >
+        <div class="flex items-center gap-4">
+          <!-- 图标 -->
+          <div :class="item.isIncome ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'" 
+               class="w-12 h-12 rounded-full flex items-center justify-center text-xl">
+            <span v-if="item.category.includes('奶')">🥛</span>
+            <span v-else-if="item.category.includes('骆驼')">🐫</span>
+            <span v-else-if="item.category.includes('草') || item.category.includes('料')">🌿</span>
+            <span v-else>💰</span>
+          </div>
+
+          <div>
+            <p class="font-bold text-gray-800">{{ item.category }}</p>
+            <p class="text-xs text-gray-400 font-mono">{{ item.date }}</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col items-end gap-1">
+          <p :class="item.isIncome ? 'text-emerald-500' : 'text-rose-500'" class="font-bold text-lg font-mono">
+            {{ item.isIncome ? '+' : '-' }}{{ item.amount.toLocaleString() }}
+          </p>
+          <!-- 删除按钮 -->
+          <button 
+            @click="handleDelete(item)"
+            class="text-[10px] text-rose-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, computed } from 'vue'
+import { supabase } from '../lib/supabase'
+import { Document } from '@element-plus/icons-vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { dataService } from '../api/dataService'
+
+const income = ref([])
+const cost = ref([])
+
+const historyList = computed(() => {
+  const list = [
+    ...income.value.map(x => ({ ...x, isIncome: true })),
+    ...cost.value.map(x => ({ ...x, isIncome: false }))
+  ]
+  // 按日期降序排序
+  return list.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 50)
+})
+
+const fetchData = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  const [incRes, costRes] = await Promise.all([
+    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(50),
+    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(50)
+  ])
+
+  income.value = incRes.data || []
+  cost.value = costRes.data || []
+}
+
+const handleDelete = (item) => {
+  ElMessageBox.confirm(
+    `确定删除这条 ¥${item.amount} 的记录吗？`,
+    '提示',
+    { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+  ).then(async () => {
+    const table = item.isIncome ? 'income' : 'cost'
+    await dataService.deleteRecord(table, item.id)
+    ElMessage.success('已删除')
+    fetchData() // 刷新列表
+  }).catch(() => {})
+}
+
+onMounted(fetchData)
+</script>
+
+==================================================
+
+File: src\components\Login.vue
+--------------------------------------------------
+<template>
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 p-4"> <!-- 增加 p-4 防止手机贴边 -->
+    <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-sm"> <!-- w-96 改为 max-w-sm 适配小屏 -->
+      <div class="flex justify-center mb-4">
+        <div class="w-16 h-16 bg-orange-500 rounded-xl flex items-center justify-center text-white font-bold text-3xl">驼</div>
+      </div>
+      <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">驼场管理系统</h2>
+      
+      <el-form label-position="top">
+        <el-form-item label="手机号码">
+          <el-input 
+            v-model="phone" 
+            placeholder="请输入11位手机号" 
+            maxlength="11"
+            type="tel"
+          >
+            <template #prefix>+86</template>
+          </el-input>
+        </el-form-item>
+        
+        <el-form-item label="登录密码">
+          <el-input 
+            v-model="password" 
+            type="password" 
+            placeholder="请输入密码" 
+            show-password
+            @keyup.enter="handleLogin" 
+          />
+        </el-form-item>
+        
+        <el-button type="primary" class="w-full mt-4 !h-10 !text-base" :loading="loading" @click="handleLogin">
+          登录 / 注册
+        </el-button>
+        <p class="text-xs text-gray-400 mt-4 text-center">
+          首次登录将自动创建账号<br>
+          (使用手机号+密码模式)
+        </p>
+      </el-form>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { supabase } from '../lib/supabase'
+import { ElMessage } from 'element-plus'
+
+const phone = ref('')
+const password = ref('')
+const loading = ref(false)
+
+// 虚拟域名后缀（用户不可见，用于满足Supabase邮箱格式要求）
+const DOMAIN_SUFFIX = '@camel.local'
+
+const handleLogin = async () => {
+  // 1. 简单的手机号校验
+  if (!/^1[3-9]\d{9}$/.test(phone.value)) {
+    return ElMessage.warning('请输入正确的11位手机号')
+  }
+  if (password.value.length < 6) {
+    return ElMessage.warning('密码至少需要6位')
+  }
+
+  loading.value = true
+  const email = phone.value + DOMAIN_SUFFIX // 自动拼接
+
+  try {
+    // 尝试登录
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password.value,
+    })
+    
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: email,
+          password: password.value,
+          // 💡 新增：显式告诉 Supabase 不需要元数据
+          options: {
+            data: {
+              phone_number: phone.value // 存一下纯手机号，方便以后查
+            }
+          }
+        })
+        if (signUpError) throw signUpError
+        
+        // 🔴 修改提示语：去掉“请检查邮箱”的说法
+        ElMessage.success('注册成功！正在自动登录...')
+        
+        // 注册成功后，Supabase v2 有时需要再次发起登录，或者自动登录
+        // 我们这里稳妥起见，如果 session 没自动建立，手动再调一次登录
+        const { data: loginData } = await supabase.auth.signInWithPassword({
+          email: email,
+          password: password.value,
+        })
+        
+      } else {
+        throw error
+      }
+    } else {
+      ElMessage.success('登录成功')
+    }
+  } catch (err) {
+    console.error(err)
+    ElMessage.error('操作失败：' + (err.message === 'User already registered' ? '密码错误' : err.message))
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
+==================================================
+
+File: src\components\SettingsModal.vue
+--------------------------------------------------
+<template>
+  <el-dialog v-model="visible" title="经营设置" width="90%" style="max-width: 400px;" center destroy-on-close>
+    
+    <div class="mb-6 bg-orange-50 p-3 rounded-lg text-sm text-orange-800">
+      <el-icon><InfoFilled /></el-icon> 这里的数据变动会影响后续的统计，请如实填写。
+    </div>
+
+    <el-form label-position="top">
+      <h3 class="font-bold border-l-4 border-orange-500 pl-2 mb-3">🐪 驼群规模</h3>
+      <el-form-item label="骆驼总数 (峰)">
+        <el-input-number v-model="form.total_camels" :min="1" size="large" style="width: 100%" />
+      </el-form-item>
+      <el-form-item label="正在产奶 (峰)">
+        <el-input-number v-model="form.milking_camels" :min="0" size="large" style="width: 100%" />
+      </el-form-item>
+
+      <h3 class="font-bold border-l-4 border-blue-500 pl-2 mb-3 mt-6">💰 日常固定开销</h3>
+      <p class="text-xs text-gray-400 mb-2">包括：人工费、伙食费、水电费等每天必须花的钱。</p>
+      <el-form-item label="每日固定支出 (元/天)">
+        <el-input-number v-model="form.daily_fixed_cost" :min="0" size="large" style="width: 100%" />
+      </el-form-item>
+    </el-form>
+
+    <template #footer>
+      <el-button @click="visible = false" size="large">取消</el-button>
+      <el-button type="primary" @click="save" :loading="loading" size="large">保存设置</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, reactive } from 'vue'
+import { supabase } from '../lib/supabase'
+import { InfoFilled } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+
+const visible = ref(false)
+const loading = ref(false)
+const form = reactive({ total_camels: 0, milking_camels: 0, daily_fixed_cost: 0 })
+const emit = defineEmits(['saved'])
+
+const open = async () => {
+  visible.value = true
+  // 加载现有设置
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).single()
+  if (data) {
+    form.total_camels = data.total_camels
+    form.milking_camels = data.milking_camels
+    form.daily_fixed_cost = data.daily_fixed_cost || 0
+  }
+}
+
+const save = async () => {
+  loading.value = true
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  // upsert: 有则更新，无则插入
+  const { error } = await supabase.from('settings').upsert({
+    user_id: user.id,
+    total_camels: form.total_camels,
+    milking_camels: form.milking_camels,
+    daily_fixed_cost: form.daily_fixed_cost
+  }, { onConflict: 'user_id' })
+
+  if (error) ElMessage.error('保存失败')
+  else {
+    ElMessage.success('保存成功')
+    visible.value = false
+    emit('saved') // 通知父组件更新数据
+  }
+  loading.value = false
+}
+
+defineExpose({ open })
+</script>
+
+==================================================
+
+File: src\components\SetupWizard.vue
+--------------------------------------------------
+<template>
+  <el-dialog v-model="visible" title="初始化您的驼场" width="95%" center :close-on-click-modal="false" :show-close="false" destroy-on-close>
+    
+    <div class="h-[60vh] overflow-y-auto px-1">
+      <!-- 第一步：规模与收入参数 -->
+      <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100">
+        <h3 class="font-bold text-blue-800 mb-3 text-sm flex items-center">
+          <span class="text-lg mr-2">🐪</span> 基础规模与收入预估
+        </h3>
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-3">
+            <el-form-item label="总驼数 (峰)">
+              <el-input-number v-model="form.total_camels" :min="1" style="width:100%" :controls="false" />
+            </el-form-item>
+            <el-form-item label="产奶驼数 (峰)">
+              <el-input-number v-model="form.milking_camels" :min="0" style="width:100%" :controls="false" />
+            </el-form-item>
+          </div>
+          
+          <div class="bg-white p-3 rounded-lg border border-blue-200">
+            <div class="text-xs text-blue-500 font-bold mb-2">卖奶情况</div>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-sm text-gray-600 whitespace-nowrap">每</span>
+              <el-input-number v-model="form.milk_frequency" :min="1" size="small" style="width: 60px" :controls="false" />
+              <span class="text-sm text-gray-600 whitespace-nowrap">天，交一次奶</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-gray-600 whitespace-nowrap">每次交</span>
+              <el-input-number v-model="form.milk_quantity_per_time" :min="0" size="small" style="width: 70px" :controls="false" />
+              <span class="text-sm text-gray-600 whitespace-nowrap">公斤 (单价:</span>
+              <el-input-number v-model="form.milk_price" :min="0" size="small" style="width: 50px" :controls="false" />
+              <span class="text-sm text-gray-600">元)</span>
+            </div>
+            <div class="mt-2 text-right text-xs text-blue-600 font-bold border-t border-blue-100 pt-1">
+              日均收入: ¥ {{ dailyMilkIncome }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二步：支出模板 -->
+      <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
+        <h3 class="font-bold text-orange-800 mb-3 text-sm flex justify-between items-center">
+          <span>💰 每日固定支出模板</span>
+          <span class="text-xs font-normal bg-orange-100 px-2 py-0.5 rounded text-orange-600">可自由修改名称</span>
+        </h3>
+        
+        <div v-for="(item, index) in form.template" :key="index" class="mb-3 bg-white p-3 rounded shadow-sm border border-orange-100">
+          <div class="flex justify-between items-center mb-2 gap-2">
+            <el-input v-model="item.name" placeholder="请输入项目名称" size="small" class="font-bold" />
+            <el-button type="danger" link size="small" @click="removeItem(index)">删除</el-button>
+          </div>
+          
+          <div class="flex gap-2">
+             <div class="flex-1">
+               <div class="text-xs text-gray-400 mb-1">数量/重量</div>
+               <el-input-number v-model="item.quantity" :min="0" size="small" style="width:100%" :controls="false" />
+             </div>
+             <div class="flex-1">
+               <div class="text-xs text-gray-400 mb-1">单价</div>
+               <el-input-number v-model="item.unit_price" :min="0" size="small" style="width:100%" :controls="false" />
+             </div>
+             <div class="w-16 text-right">
+               <div class="text-xs text-gray-400 mb-1">小计</div>
+               <div class="font-bold text-orange-600 pt-1">¥{{ (item.quantity * item.unit_price).toFixed(0) }}</div>
+             </div>
+          </div>
+        </div>
+        
+        <el-button class="w-full mt-2 border-dashed bg-white" @click="addItem">
+          <span class="text-orange-500 font-bold">+ 添加其他支出项</span>
         </el-button>
       </div>
     </div>
 
-    <!-- 2. 核心指标卡片 (保持不变) -->
-    <el-row :gutter="20" class="mb-6">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-green-500">
-          <template #header><span class="text-gray-500 text-sm">本月总收入</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.income) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-gray-400">
-          <template #header><span class="text-gray-500 text-sm">固定成本</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.fixedCost) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="border-l-4 border-orange-400">
-          <template #header><span class="text-gray-500 text-sm">变动成本</span></template>
-          <div class="text-3xl font-bold text-gray-800">¥ {{ formatNumber(stats.variableCost) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="never" class="bg-gray-800 text-white border-none">
-          <template #header><span class="text-gray-300 text-sm">本月净利润</span></template>
-          <div class="text-4xl font-bold" :class="stats.profit >= 0 ? 'text-green-400' : 'text-red-400'">
-            ¥ {{ formatNumber(stats.profit) }}
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 3. 可视化图表区 (NEW) -->
-    <el-row :gutter="20" class="mb-6">
-      <!-- 左侧：成本饼图 -->
-      <el-col :xs="24" :md="12" class="mb-6 md:mb-0">
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-          <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-orange-500 pl-2">本月成本结构</h3>
-          <div id="pieChart" style="height: 350px; width: 100%;"></div>
-        </div>
-      </el-col>
-      <!-- 右侧：趋势柱状图 -->
-      <el-col :xs="24" :md="12" class="mb-6 md:mb-0">
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <h3 class="font-bold text-gray-700 mb-4 border-l-4 border-blue-500 pl-2">近半年利润趋势</h3>
-          <div id="barChart" style="height: 350px; width: 100%;"></div>
-        </div>
-      </el-col>
-    </el-row>
-
-    <!-- 4. 明细报表区 (Tab切换) -->
-    <el-card shadow="never">
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="收入明细" name="income">
-          <el-table :data="rawIncome" stripe style="width: 100%" height="400">
-            <el-table-column prop="date" label="日期" width="120" sortable />
-            <el-table-column prop="category" label="品类" width="150">
-              <template #default="scope"><el-tag effect="light">{{ scope.row.category }}</el-tag></template>
-            </el-table-column>
-            <el-table-column prop="quantity" label="数量" width="120" />
-            <el-table-column prop="unit_price" label="单价" width="120" />
-            <el-table-column prop="amount" label="总金额" sortable>
-              <template #default="scope"><span class="font-bold text-green-600">+ ¥{{ formatNumber(scope.row.amount) }}</span></template>
-            </el-table-column>
-            <!-- 🆕 新增：删除操作列 -->
-            <el-table-column label="操作" width="100" align="center">
-              <template #default="scope">
-                <!-- 修改点：去掉了 link，去掉了 icon，保留 type="danger" -->
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  @click="handleDelete(scope.row, 'income')"
-                >
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-        
-        <el-tab-pane label="成本明细" name="cost">
-          <el-table :data="rawCost" stripe style="width: 100%" height="400">
-            <el-table-column prop="date" label="日期" width="120" sortable />
-            <el-table-column prop="category" label="项目" width="150" />
-            <el-table-column prop="cost_type" label="类型" width="120">
-              <template #default="scope">
-                <el-tag :type="scope.row.cost_type === '固定成本' ? 'info' : 'warning'">{{ scope.row.cost_type }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="amount" label="支出金额" sortable>
-              <template #default="scope"><span class="font-bold text-red-500">- ¥{{ formatNumber(scope.row.amount) }}</span></template>
-            </el-table-column>
-            <!-- 🆕 新增：删除操作列 -->
-            <el-table-column label="操作" width="100" align="center">
-              <template #default="scope">
-                <!-- 修改点：去掉了 link，去掉了 icon，保留 type="danger" -->
-                <el-button 
-                  type="danger" 
-                  size="small" 
-                  @click="handleDelete(scope.row, 'cost')"
-                >
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
-
-    <AddRecordModal ref="addModalRef" @success="refreshAll" />
-  </div>
+    <div class="py-4 bg-white border-t mt-2">
+      <div class="flex justify-between text-sm mb-2 px-2">
+        <span class="text-gray-500">预估日净利 (收入-支出):</span>
+        <span class="font-bold text-lg" :class="dailyProfit >= 0 ? 'text-green-600' : 'text-red-500'">
+          ¥ {{ dailyProfit }}
+        </span>
+      </div>
+      <el-button type="primary" size="large" class="w-full font-bold" @click="saveSettings" :loading="loading">
+        保存并自动生成今日账单
+      </el-button>
+    </div>
+  </el-dialog>
 </template>
-import * as XLSX from 'xlsx' // 引入 Excel 处理库
+
 <script setup>
-// 1. 引入 Delete 图标
-import { Plus, Download, Delete } from '@element-plus/icons-vue' 
-import { ref, onMounted, computed, nextTick } from 'vue'
-import * as echarts from 'echarts'
-import AddRecordModal from './AddRecordModal.vue'
-import * as XLSX from 'xlsx'
-import { dataService } from '../api/dataService'
-// 2. 引入消息确认框
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, reactive, computed } from 'vue'
+import { supabase } from '../lib/supabase'
+import { ElMessage } from 'element-plus'
 
-// --- 状态定义 ---
-const currentMonth = ref(new Date().toISOString().slice(0, 7))
-const activeTab = ref('income')
-const addModalRef = ref(null)
-const rawIncome = ref([])
-const rawCost = ref([])
+const visible = ref(false)
+const loading = ref(false)
+const emit = defineEmits(['finish'])
 
-// 图表实例
-let pieChartInstance = null
-let barChartInstance = null
+// 预设模板
+const defaultItems = [
+  { name: '豆粕', quantity: 1, unit_price: 170 },
+  { name: '葵花头', quantity: 1, unit_price: 50 },
+  { name: '颗粒饲料', quantity: 1, unit_price: 150 },
+  { name: '燕麦草', quantity: 2, unit_price: 50 },
+  { name: '苜蓿草', quantity: 3, unit_price: 50 },
+  { name: '青储草', quantity: 6, unit_price: 50 },
+  { name: '人工工资', quantity: 1, unit_price: 334 },
+  { name: '水电费', quantity: 1, unit_price: 30 },
+  { name: '燃油', quantity: 1, unit_price: 30 },
+]
 
-// --- 核心计算 ---
-const stats = computed(() => {
-  const incomeTotal = rawIncome.value.reduce((sum, item) => sum + Number(item.amount), 0)
-  const fixedTotal = rawCost.value.filter(i => i.cost_type === '固定成本').reduce((sum, i) => sum + Number(i.amount), 0)
-  const variableTotal = rawCost.value.filter(i => i.cost_type === '变动成本').reduce((sum, i) => sum + Number(i.amount), 0)
-  return { income: incomeTotal, fixedCost: fixedTotal, variableCost: variableTotal, profit: incomeTotal - fixedTotal - variableTotal }
+const form = reactive({
+  total_camels: 100,
+  milking_camels: 20,
+  milk_frequency: 1, // 几天交一次
+  milk_quantity_per_time: 40, // 每次交多少
+  milk_price: 30,
+  template: JSON.parse(JSON.stringify(defaultItems))
 })
 
-// --- 方法 ---
-const formatNumber = (num) => Number(num).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const handleAdd = () => addModalRef.value.open()
+// 计算日均奶收入
+const dailyMilkIncome = computed(() => {
+  if (!form.milk_frequency || form.milk_frequency === 0) return 0
+  return ((form.milk_quantity_per_time / form.milk_frequency) * form.milk_price).toFixed(0)
+})
 
-// 1. 获取当月数据 (用于指标卡、表格、饼图)
-const fetchMonthData = async () => {
-  const { income, cost } = await dataService.getDataByMonth(currentMonth.value)
-  rawIncome.value = income
-  rawCost.value = cost
-  updatePieChart() // 数据回来后更新饼图
+const totalDailyCost = computed(() => {
+  return form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
+})
+
+const dailyProfit = computed(() => {
+  return (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0)
+})
+
+const check = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  // 使用 maybeSingle 防止 406 错误
+  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+  // 如果没有设置，或者 daily_template 是空的，就显示向导
+  if (!data || !data.daily_template) visible.value = true
 }
 
-// 2. 获取趋势数据 (用于柱状图)
-const fetchTrendData = async () => {
-  const { income, cost } = await dataService.getTrendData()
-  updateBarChart(income, cost)
+const addItem = () => {
+  form.template.push({ name: '', quantity: 1, unit_price: 0 })
 }
 
-// 刷新所有数据
-const refreshAll = () => {
-  fetchMonthData()
-  fetchTrendData()
+const removeItem = (index) => {
+  form.template.splice(index, 1)
 }
 
-// --- 图表逻辑 ---
-
-// 更新饼图：基于当月 rawCost
-// 更新饼图
-const updatePieChart = () => {
-  if (!pieChartInstance) return
-  
-  const dist = {}
-  rawCost.value.forEach(item => {
-    dist[item.category] = (dist[item.category] || 0) + Number(item.amount)
-  })
-  
-  const data = Object.keys(dist).map(k => ({ name: k, value: dist[k] }))
-
-  pieChartInstance.setOption({
-    tooltip: { trigger: 'item' },
-    legend: { 
-      bottom: '0%',
-      left: 'center' 
-    },
-    color: ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de'],
-    series: [{
-      type: 'pie', 
-      radius: ['40%', '60%'], // 稍微调大一点点，看着更饱满
-      center: ['50%', '50%'], // ⚠️ 关键修复：强制在容器正中间
-      avoidLabelOverlap: true,
-      itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
-      label: { 
-        show: true, 
-        formatter: '{b}: {c}'
-      },
-      data: data.length ? data : [{ name: '无数据', value: 0 }]
-    }]
-  })
-}
-
-// 更新柱状图：基于历史趋势数据
-// 更新柱状图：基于历史趋势数据
-const updateBarChart = (allIncome, allCost) => {
-  if (!barChartInstance) return
-
-  // 1. 生成最近 6 个月的月份标签
-  const months = []
-  const d = new Date()
-  for (let i = 0; i < 6; i++) {
-    months.unshift(d.toISOString().slice(0, 7))
-    d.setMonth(d.getMonth() - 1)
+const saveSettings = async () => {
+  // 简单校验
+  if (form.template.some(item => !item.name || item.name.trim() === '')) {
+    return ElMessage.warning('请确保所有支出项都有名称')
   }
 
-  // 2. 计算每个月的利润
-  const values = months.map(m => {
-    const inc = allIncome.filter(i => i.date.startsWith(m)).reduce((s, i) => s + Number(i.amount), 0)
-    const cst = allCost.filter(c => c.date.startsWith(m)).reduce((s, c) => s + Number(c.amount), 0)
-    return (inc - cst).toFixed(0)
-  })
-
-  barChartInstance.setOption({
-    tooltip: { trigger: 'axis' },
-    // ⚠️ 关键修复：显式定义网格，containLabel: true 会自动计算文字宽度，防止溢出或错位
-    grid: { 
-      top: '15%', 
-      bottom: '5%', 
-      left: '2%', 
-      right: '2%', 
-      containLabel: true 
-    },
-    xAxis: { 
-      type: 'category', 
-      data: months,
-      axisTick: { alignWithLabel: true } // 让刻度线和标签对齐
-    },
-    yAxis: { type: 'value' },
-    series: [{
-      data: values, 
-      type: 'bar', 
-      barWidth: '40%',
-      itemStyle: { 
-        color: params => {
-          // 进阶优化：盈利绿色，亏损红色 (可选)
-          return params.value >= 0 ? '#3ba272' : '#ee6666'
-        },
-        borderRadius: [4, 4, 0, 0] 
-      },
-      label: { show: true, position: 'top' }
-    }]
-  })
-}
-
-// --- 导出 Excel ---
-const handleExport = () => {
-  // 1. 准备 Sheet1：月度汇总数据
-  const summaryData = [
-    ['报表月份', currentMonth.value],
-    ['生成时间', new Date().toLocaleString()],
-    [], // 空行
-    ['项目', '金额 (元)'],
-    ['总收入', stats.value.income],
-    ['固定成本', stats.value.fixedCost],
-    ['变动成本', stats.value.variableCost],
-    ['净利润', stats.value.profit]
-  ]
-  // 将数组转换为工作表
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData)
-
-  // 2. 准备 Sheet2：详细流水数据
-  // 合并收入和支出，整理成扁平格式
-  const incomeRows = rawIncome.value.map(item => ({
-    日期: item.date,
-    收支类型: '收入',
-    项目分类: item.category,
-    数量: item.quantity,
-    单价: item.unit_price,
-    成本属性: '-',
-    金额: item.amount
-  }))
-
-  const costRows = rawCost.value.map(item => ({
-    日期: item.date,
-    收支类型: '支出',
-    项目分类: item.category,
-    数量: '-',
-    单价: '-',
-    成本属性: item.cost_type,
-    金额: 0 - item.amount // 支出显示为负数，方便会计核对
-  }))
-
-  // 合并并按日期排序
-  const allRows = [...incomeRows, ...costRows].sort((a, b) => new Date(a.日期) - new Date(b.日期))
-  const wsDetails = XLSX.utils.json_to_sheet(allRows)
-
-  // 3. 创建工作簿并添加 Sheet
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, wsSummary, "月度汇总")
-  XLSX.utils.book_append_sheet(wb, wsDetails, "收支明细")
-
-  // 4. 触发下载
-  XLSX.writeFile(wb, `驼场利润报表_${currentMonth.value}.xlsx`)
-}
-// --- 删除逻辑 ---
-const handleDelete = (row, type) => {
-  ElMessageBox.confirm(
-    '确定要删除这条记录吗？删除后无法恢复。',
-    '警告',
-    {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
+  loading.value = true
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // 1. 保存设置
+    const settingsData = {
+      user_id: user.id,
+      total_camels: form.total_camels,
+      milking_camels: form.milking_camels,
+      daily_template: form.template,
+      milk_price: form.milk_price,
+      milk_frequency: form.milk_frequency,
+      milk_quantity_per_time: form.milk_quantity_per_time
     }
-  ).then(async () => {
-    try {
-      // 调用 API 删除
-      // type 传入 'income' 或 'cost'
-      await dataService.deleteRecord(type, row.id)
+
+    const { error: settingsError } = await supabase.from('settings').upsert(settingsData, { onConflict: 'user_id' })
+    if (settingsError) throw settingsError
+
+    // 2. 自动生成今日账单 (实账)
+    const today = new Date().toISOString().slice(0, 10)
+    // 检查今天是否已经有日常支出了，防止重复生成 (虽然初始化通常是新用户，但防守一下更好)
+    const { count } = await supabase.from('cost').select('*', { count: 'exact', head: true }).eq('date', today).eq('cost_type', '日常支出')
+    
+    if (count === 0) {
+      const records = form.template.map(item => ({
+        user_id: user.id,
+        date: today,
+        category: item.name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        amount: item.quantity * item.unit_price,
+        cost_type: '日常支出',
+        weight: 0 
+      }))
       
-      ElMessage.success('删除成功')
-      // 核心：删除后立即刷新所有数据
-      refreshAll()
-    } catch (error) {
-      console.error(error)
-      ElMessage.error('删除失败')
+      const { error: costError } = await supabase.from('cost').insert(records)
+      if (costError) throw costError
     }
-  }).catch(() => {
-    // 用户点击了取消，不做任何事
-  })
+
+    ElMessage.success('初始化完成，今日账单已自动生成！')
+    visible.value = false
+    emit('finish')
+    
+  } catch (err) {
+    console.error(err)
+    ElMessage.error('保存失败: ' + err.message)
+  } finally {
+    loading.value = false
+  }
 }
 
-// 初始化
-onMounted(() => {
-  // 使用 setTimeout 确保 DOM 布局已经完全稳定
-  setTimeout(() => {
-    const pieEl = document.getElementById('pieChart')
-    const barEl = document.getElementById('barChart')
+defineExpose({ check })
+</script>
 
-    if (pieEl && barEl) {
-      pieChartInstance = echarts.init(pieEl)
-      barChartInstance = echarts.init(barEl)
+==================================================
+
+File: src\components\Square.vue
+--------------------------------------------------
+<template>
+  <div class="p-4 bg-gray-50 min-h-screen">
+    <!-- 顶部标题 -->
+    <div class="flex justify-between items-center mb-4 sticky top-0 bg-gray-50 z-10 py-2">
+      <h2 class="text-xl font-bold text-gray-800">驼户广场</h2>
+      <el-button type="primary" size="small" round @click="showPostModal = true">
+        <el-icon class="mr-1"><Edit /></el-icon> 发布
+      </el-button>
+    </div>
+
+    <!-- 分类标签 -->
+    <div class="flex gap-2 mb-4 overflow-x-auto pb-2">
+      <el-tag 
+        v-for="type in types" :key="type"
+        :effect="activeType === type ? 'dark' : 'plain'"
+        class="cursor-pointer"
+        @click="filterType(type)"
+      >
+        {{ type }}
+      </el-tag>
+    </div>
+
+    <!-- 帖子列表 -->
+    <div v-loading="loading" class="space-y-3">
+      <div v-for="post in posts" :key="post.id" class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+        <div class="flex justify-between items-start mb-2">
+          <el-tag size="small" :type="getTagType(post.type)">{{ post.type }}</el-tag>
+          <span class="text-xs text-gray-400">{{ formatDate(post.created_at) }}</span>
+        </div>
+        <h3 class="font-bold text-lg text-gray-800 mb-2">{{ post.title }}</h3>
+        <p class="text-gray-600 text-sm mb-3 whitespace-pre-wrap">{{ post.content }}</p>
+        
+        <div class="border-t pt-2 flex justify-between items-center mt-2">
+          <span class="text-sm text-gray-500">联系人：驼友</span>
+          <a :href="'tel:' + post.contact_info" class="text-blue-600 text-sm font-bold flex items-center">
+            <el-icon class="mr-1"><Phone /></el-icon> 拨打 {{ post.contact_info }}
+          </a>
+        </div>
+      </div>
+      <el-empty v-if="!loading && posts.length === 0" description="暂无信息，快来发布第一条吧" />
+    </div>
+
+    <!-- 发布弹窗 -->
+    <el-dialog v-model="showPostModal" title="发布信息" width="90%" style="max-width:500px">
+      <el-form label-position="top">
+        <el-form-item label="类型">
+          <el-radio-group v-model="form.type">
+            <el-radio-button label="招聘" />
+            <el-radio-button label="出租" />
+            <el-radio-button label="求助" />
+            <el-radio-button label="广告" />
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="标题">
+          <el-input v-model="form.title" placeholder="如：急招养殖工两名" />
+        </el-form-item>
+        <el-form-item label="详情">
+          <el-input v-model="form.content" type="textarea" rows="3" placeholder="请描述具体要求..." />
+        </el-form-item>
+        <el-form-item label="联系电话">
+          <el-input v-model="form.contact_info" placeholder="方便他人联系你" type="tel" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPostModal = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitPost">发布</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { supabase } from '../lib/supabase'
+import { Edit, Phone } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+
+const types = ['全部', '招聘', '出租', '求助', '广告']
+const activeType = ref('全部')
+const posts = ref([])
+const loading = ref(false)
+const showPostModal = ref(false)
+const submitting = ref(false)
+
+const form = reactive({ type: '招聘', title: '', content: '', contact_info: '' })
+
+// 1. 获取帖子
+const fetchPosts = async () => {
+  loading.value = true
+  let query = supabase.from('posts').select('*').order('created_at', { ascending: false })
+  
+  if (activeType.value !== '全部') {
+    query = query.eq('type', activeType.value)
+  }
+  
+  const { data, error } = await query
+  if (!error) posts.value = data
+  loading.value = false
+}
+
+// 2. 筛选
+const filterType = (type) => {
+  activeType.value = type
+  fetchPosts()
+}
+
+// 3. 发布
+const submitPost = async () => {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  
+  // 如果服务器返回 403 或者没有用户对象，说明 Token 坏了
+  if (userError || !user) {
+    console.error('身份验证失败:', userError)
+    ElMessage.error('您的登录状态已失效，请点击底部"退出"后重新登录')
+    submitting.value = false
+    return // 直接结束，不往下执行，防止报错
+  }
+  
+  const { error } = await supabase.from('posts').insert([{
+    user_id: user.id,
+    ...form
+  }])
+
+  if (error) {
+    ElMessage.error('发布失败')
+  } else {
+    ElMessage.success('发布成功')
+    showPostModal.value = false
+    // 清空表单
+    form.title = ''
+    form.content = ''
+    fetchPosts()
+  }
+  submitting.value = false
+}
+
+// 工具函数
+const getTagType = (t) => {
+  const map = { '招聘': 'success', '出租': 'warning', '求助': 'danger', '广告': 'info' }
+  return map[t] || ''
+}
+const formatDate = (str) => new Date(str).toLocaleDateString()
+
+onMounted(fetchPosts)
+</script>
+
+==================================================
+
+File: src\components\YearlyReportModal.vue
+--------------------------------------------------
+<template>
+  <el-dialog v-model="visible" title="年度账本 (今年)" width="95%" style="max-width: 500px;" center>
+    <div v-loading="loading">
       
-      window.addEventListener('resize', () => {
-        pieChartInstance && pieChartInstance.resize()
-        barChartInstance && barChartInstance.resize()
-      })
+      <!-- 1. 饲料专属统计 -->
+      <div class="bg-green-50 p-4 rounded-xl mb-6 border border-green-100">
+        <h3 class="font-bold text-green-800 mb-2 flex items-center">
+          🌿 饲料总计
+        </h3>
+        <div class="flex justify-between items-end border-b border-green-200 pb-2 mb-2">
+          <span class="text-gray-600">总重量</span>
+          <span class="text-xl font-bold text-green-700">{{ totalFeedWeight }} 吨</span>
+        </div>
+        <div class="flex justify-between items-end">
+          <span class="text-gray-600">总花费</span>
+          <span class="text-xl font-bold text-green-700">¥ {{ formatNumber(totalFeedCost) }}</span>
+        </div>
+      </div>
 
-      refreshAll()
-    }
-  }, 100) // 延时 100ms
+      <!-- 2. 分类成本排行榜 -->
+      <h3 class="font-bold text-gray-800 mb-3 border-l-4 border-orange-500 pl-2">各项成本排行</h3>
+      <div class="space-y-3">
+        <div v-for="(item, index) in costRank" :key="index" class="flex items-center justify-between bg-white p-3 rounded shadow-sm border">
+          <div class="flex items-center gap-3">
+            <span class="text-gray-400 font-bold w-4">{{ index + 1 }}</span>
+            <span class="font-bold text-gray-700">{{ item.name }}</span>
+          </div>
+          <div class="text-right">
+             <div class="font-bold">¥ {{ formatNumber(item.value) }}</div>
+             <div class="text-xs text-gray-400">{{ ((item.value / totalCost) * 100).toFixed(1) }}%</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <template #footer>
+      <el-button @click="visible = false" size="large" class="w-full">关闭</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref, computed } from 'vue'
+import { supabase } from '../lib/supabase'
+
+const visible = ref(false)
+const loading = ref(false)
+const rawCosts = ref([])
+
+const open = () => {
+  visible.value = true
+  fetchYearData()
+}
+
+const fetchYearData = async () => {
+  loading.value = true
+  const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString()
+  
+  const { data } = await supabase
+    .from('cost')
+    .select('*')
+    .gte('date', startOfYear)
+  
+  rawCosts.value = data || []
+  loading.value = false
+}
+
+// 统计逻辑
+const totalFeedWeight = computed(() => {
+  // 筛选所有饲料，累加重量
+  const feeds = rawCosts.value.filter(c => c.category.includes('饲料') || c.category.includes('草') || c.category.includes('玉米'))
+  return feeds.reduce((sum, item) => sum + (Number(item.weight) || 0), 0)
 })
+
+const totalFeedCost = computed(() => {
+  const feeds = rawCosts.value.filter(c => c.category.includes('饲料') || c.category.includes('草') || c.category.includes('玉米'))
+  return feeds.reduce((sum, item) => sum + Number(item.amount), 0)
+})
+
+const totalCost = computed(() => rawCosts.value.reduce((s, i) => s + i.amount, 0))
+
+const costRank = computed(() => {
+  const map = {}
+  rawCosts.value.forEach(item => {
+    // 简单归类：如果是具体饲料名，统一归为“饲料”以便看总数，或者按原名显示
+    // 这里按原名显示，用户想看细节
+    map[item.category] = (map[item.category] || 0) + item.amount
+  })
+  return Object.keys(map)
+    .map(k => ({ name: k, value: map[k] }))
+    .sort((a, b) => b.value - a.value)
+})
+
+const formatNumber = (n) => n.toLocaleString()
+
+defineExpose({ open })
 </script>
 
 ==================================================

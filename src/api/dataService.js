@@ -84,5 +84,32 @@ export const dataService = {
     const { error } = await supabase.from(table).delete().eq('id', id)
     if (error) throw error
     return true
+  },
+
+   // 8. 清空所有数据 (用于重置或测试)
+  async clearAllUserData() {
+    const user_id = await this._getUserId()
+    if (!user_id) return
+
+    // 并行删除所有关联表的数据
+    const promises = [
+      supabase.from('income').delete().eq('user_id', user_id),
+      supabase.from('cost').delete().eq('user_id', user_id),
+      supabase.from('settings').delete().eq('user_id', user_id),
+      supabase.from('posts').delete().eq('user_id', user_id)
+    ]
+
+    const results = await Promise.all(promises)
+    
+    // 检查是否有错误
+    const error = results.find(r => r.error)?.error
+    if (error) throw error
+
+    // 清除本地缓存，确保界面刷新后重新触发引导
+    localStorage.removeItem('cache_inc')
+    localStorage.removeItem('cache_cost')
+    localStorage.removeItem('cache_set')
+    
+    return true
   }
 }

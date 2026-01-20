@@ -19,6 +19,14 @@
       <el-form-item label="每日固定支出 (元/天)">
         <el-input-number v-model="form.daily_fixed_cost" :min="0" size="large" style="width: 100%" />
       </el-form-item>
+      <!-- 新增：危险区域 -->
+       <div class="mt-10 pt-6 border-t border-red-100">
+         <h3 class="text-red-500 font-bold text-sm mb-2">⚠️ 危险区域</h3>
+         <p class="text-[11px] text-gray-400 mb-4">如果您想重新开始，可以清空所有账单和设置。此操作不可撤销。</p>
+         <el-button type="danger" plain class="w-full" size="default" @click="handleResetAll">
+           清空所有数据并重新初始化
+         </el-button>
+       </div>
     </el-form>
 
     <template #footer>
@@ -32,12 +40,42 @@
 import { ref, reactive } from 'vue'
 import { supabase } from '../lib/supabase'
 import { InfoFilled } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { dataService } from '../api/dataService'
 
 const visible = ref(false)
 const loading = ref(false)
 const form = reactive({ total_camels: 0, milking_camels: 0, daily_fixed_cost: 0 })
 const emit = defineEmits(['saved'])
+
+const handleResetAll = () => {
+  ElMessageBox.confirm(
+    '确定要删除所有账单、设置和发布的信息吗？系统将恢复到初次使用的状态。',
+    '彻底清空确认',
+    {
+      confirmButtonText: '确定清空',
+      cancelButtonText: '取消',
+      type: 'warning',
+      buttonSize: 'large',
+      confirmButtonClass: 'el-button--danger'
+    }
+  ).then(async () => {
+    loading.value = true
+    try {
+      await dataService.clearAllUserData()
+      ElMessage.success('数据已全部清除')
+      visible.value = false
+      
+      // 核心：强制刷新页面，让 Dashboard 重新触发 SetupWizard
+      window.location.reload()
+    } catch (e) {
+      ElMessage.error('清除失败: ' + e.message)
+    } finally {
+      loading.value = false
+    }
+  }).catch(() => {})
+}
+
 
 const open = async () => {
   visible.value = true

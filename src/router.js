@@ -1,12 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Dashboard from './components/Dashboard.vue'
-import Square from './components/Square.vue' // 稍后创建
-import Login from './components/Login.vue'
+import HistoryView from './components/HistoryView.vue' // 改为直接引入
 
 const routes = [
   { path: '/', component: Dashboard },
-  { path: '/square', component: Square },
-  { path: '/login', component: Login }
+  { path: '/history', component: HistoryView } // 使用组件
 ]
 
 const router = createRouter({
