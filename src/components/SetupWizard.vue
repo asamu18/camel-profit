@@ -134,11 +134,25 @@ const dailyProfit = computed(() => {
 
 const check = async () => {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-  // 使用 maybeSingle 防止 406 错误
-  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
-  // 如果没有设置，或者 daily_template 是空的，就显示向导
-  if (!data || !data.daily_template) visible.value = true
+  if (!user) {
+    console.log("向导检测：用户未登录")
+    return
+  }
+
+  // 增加强制从服务端拉取，避免缓存
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  console.log("向导检测数据:", data)
+
+  // 🔴 逻辑优化：如果没有数据，或者 daily_template 字段是空的/空数组，就弹出
+  if (error || !data || !data.daily_template || data.daily_template.length === 0) {
+    console.log("向导检测：未检测到有效配置，开启引导...")
+    visible.value = true
+  }
 }
 
 const addItem = () => {

@@ -5,24 +5,23 @@
       
       <!-- 场景 A: 卖奶 -->
       <div v-if="scene === '卖奶'">
-         <el-form-item label="交奶日期">
-    <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large"/>
-  </el-form-item>
-  
-  <!-- 🔴 新增：交奶涵盖的天数 -->
-  <el-form-item label="这笔钱是几天的奶？">
-    <el-input-number v-model="form.duration" :min="1" :max="30" style="width: 100%" size="large" />
-    <p class="text-[10px] text-gray-400 mt-1">系统将自动平摊这 {{form.duration}} 天的利润</p>
-  </el-form-item>
+        <el-form-item label="交奶日期">
+          <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large"/>
+        </el-form-item>
+        
+        <el-form-item label="这笔钱是几天的奶？">
+          <el-input-number v-model="form.duration" :min="1" :max="30" style="width: 100%" size="large" />
+          <p class="text-[10px] text-gray-400 mt-1">系统将自动平摊这 {{form.duration}} 天的利润</p>
+        </el-form-item>
 
-  <div class="flex gap-4">
-    <el-form-item label="数量 (公斤)" class="flex-1">
-      <el-input-number v-model="form.quantity" :min="0.1" style="width: 100%" size="large" />
-    </el-form-item>
-    <el-form-item label="单价 (元/公斤)" class="flex-1">
-      <el-input-number v-model="form.unit_price" :min="0.1" style="width: 100%" size="large" />
-    </el-form-item>
-  </div>
+        <div class="flex gap-4">
+          <el-form-item label="数量 (公斤)" class="flex-1">
+            <el-input-number v-model="form.quantity" :min="0.1" style="width: 100%" size="large" />
+          </el-form-item>
+          <el-form-item label="单价 (元/公斤)" class="flex-1">
+            <el-input-number v-model="form.unit_price" :min="0.1" style="width: 100%" size="large" />
+          </el-form-item>
+        </div>
         <div class="bg-blue-50 p-3 rounded text-center text-blue-800 font-bold mb-4">
           总收入: ¥ {{ (form.quantity * form.unit_price).toFixed(2) }}
         </div>
@@ -51,6 +50,26 @@
         </div>
       </div>
 
+      <!-- 场景 E: 录入库存 (新) -->
+      <div v-if="scene === '录入库存'">
+        <div class="bg-blue-50 p-3 rounded-lg mb-4 text-[10px] text-blue-800 border border-blue-100">
+          💡 提示：此操作将直接更新家里的库存总量，用于定期盘点。
+        </div>
+        <el-form-item label="饲料名称">
+          <el-select v-model="form.category" filterable allow-create placeholder="请选择或输入" size="large" style="width: 100%">
+             <el-option v-for="item in feedOptions" :key="item.name" :label="item.name" :value="item.name" />
+          </el-select>
+        </el-form-item>
+        <div class="flex gap-3">
+          <el-form-item label="库存重量 (吨)" class="flex-1">
+            <el-input-number v-model="form.weight" :min="0" :precision="2" style="width: 100%" size="large" :controls="false" />
+          </el-form-item>
+          <el-form-item label="估值单价 (元/吨)" class="flex-1">
+            <el-input-number v-model="form.unit_price" :min="0" style="width: 100%" size="large" :controls="false" />
+          </el-form-item>
+        </div>
+      </div>
+
       <!-- 场景 C: 骆驼交易 -->
       <div v-if="scene === '骆驼交易'">
         <el-tabs type="card" v-model="camelType">
@@ -71,8 +90,8 @@
       <!-- 场景 D: 其他 -->
       <div v-if="scene === '其他'">
         <el-radio-group v-model="form.type" class="mb-4">
-          <el-radio-button label="income">收入</el-radio-button>
           <el-radio-button label="cost">支出</el-radio-button>
+          <el-radio-button label="income">额外收入</el-radio-button>
         </el-radio-group>
         <el-form-item label="项目名称">
           <el-input v-model="form.category" placeholder="如：兽药、水电" size="large" />
@@ -108,7 +127,7 @@ const emit = defineEmits(['success'])
 const userTemplate = ref([])
 
 const form = reactive({
-  date: '', quantity: 1, unit_price: 30, amount: 0, category: '', type: 'income', duration: 30, weight: 0
+  date: '', quantity: 1, unit_price: 30, amount: 0, category: '', type: 'income', duration: 1, weight: 0
 })
 
 const feedOptions = computed(() => {
@@ -118,28 +137,32 @@ const feedOptions = computed(() => {
 })
 
 const sceneTitle = computed(() => {
-  return { '卖奶': '今日卖奶', '买饲料': '进大车饲料', '骆驼交易': '骆驼买卖', '其他': '记一笔' }[scene.value]
+  return { '卖奶': '今日卖奶', '买饲料': '进大车饲料', '其他': '记一笔', '录入库存': '自家存货盘点' }[scene.value]
 })
 
 const openWithScene = async (s) => {
   scene.value = s
   visible.value = true
   form.date = new Date().toISOString().slice(0, 10)
+  form.weight = 0
   form.amount = 0
-  form.quantity = 1
-  form.category = ''
+  form.unit_price = 0
+
+  if (s === '其他') {
+    form.type = 'cost'
+    form.category = ''
+  }
 
   const { data: { user } } = await supabase.auth.getUser()
   if (s === '卖奶') {
-  form.category = '驼奶销售'
-  // 🔴 默认带入模板里的频率
-  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
-  if (data) {
-    form.unit_price = data.milk_price || 30
-    form.duration = data.milk_frequency || 1 // 默认天数
+    form.category = '驼奶销售'
+    const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+    if (data) {
+      form.unit_price = data.milk_price || 30
+      form.duration = data.milk_frequency || 1
+    }
   }
-}
-  if (s === '买饲料') {
+  if (s === '买饲料' || s === '录入库存') {
     const { data } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).maybeSingle()
     if (data) userTemplate.value = data.daily_template || []
   }
@@ -149,33 +172,27 @@ const submit = async () => {
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
+    
+    if (scene.value === '录入库存') {
+      if (!form.category) throw new Error('请选择饲料名称')
+      await dataService.updateInventory({
+        category: form.category,
+        quantity: form.weight,
+        unit_price: form.unit_price
+      })
+      ElMessage.success('库存盘点已完成')
+    }
+    else if (scene.value === '卖奶') {
+      const { count } = await supabase.from('income').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('date', form.date).eq('category', '驼奶销售')
+      if (count > 0) throw new Error(`${form.date} 已有交奶记录`)
 
-    if (scene.value === '卖奶') {
-      // 🔴 关键逻辑：数据库查重
-      const { count } = await supabase
-        .from('income')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('date', form.date)
-        .eq('category', '驼奶销售')
-
-      if (count > 0) {
-        throw new Error(`${form.date} 已有交奶记录，请勿重复提交`)
-      }
-
-       await dataService.addIncome({
-    date: form.date, 
-    category: '驼奶销售', 
-    quantity: form.quantity, 
-    unit_price: form.unit_price, 
-    amount: form.quantity * form.unit_price,
-    duration: form.duration // 🔴 存入这个天数
-  })
+      await dataService.addIncome({
+        date: form.date, category: '驼奶销售', quantity: form.quantity, unit_price: form.unit_price, amount: form.quantity * form.unit_price, duration: form.duration
+      })
     } 
     else if (scene.value === '买饲料') {
       await dataService.addCost({
-        date: form.date, category: form.category || '饲料', 
-        amount: form.amount, weight: form.weight, cost_type: '库存进货'
+        date: form.date, category: form.category || '饲料', amount: form.amount, weight: form.weight, cost_type: '库存进货'
       })
     }
     else if (scene.value === '骆驼交易') {

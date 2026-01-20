@@ -1,200 +1,263 @@
 <template>
-  <div class="space-y-4 pb-10">
-    <div class="flex items-center justify-between mb-2">
-      <h2 class="text-xl font-bold text-[#8B5E3C]">账务明细</h2>
-      <el-radio-group v-model="viewType" size="small">
-        <el-radio-button label="all">流水</el-radio-button>
-        <el-radio-button label="fixed">每日模板</el-radio-button>
-        <el-radio-button label="feed">大车进货</el-radio-button>
-      </el-radio-group>
-    </div>
-
-    <!-- 1. 每日模板栏：允许实时修改 -->
-    <div v-if="viewType === 'fixed'" class="space-y-3 animate-in fade-in">
-      <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-2">
-        <div class="flex justify-between items-center">
-          <span class="text-blue-800 font-bold">每日固定消耗明细</span>
-          <span class="text-blue-700 font-mono font-bold">合计: ￥{{ dailyTemplateTotal }}</span>
-        </div>
-        <p class="text-[10px] text-blue-400 mt-1">修改后点击下方“保存设置”即可生效</p>
+  <div class="space-y-4 pb-24">
+    <!-- 顶部导航与筛选 -->
+    <div class="sticky top-0 bg-[#FDFBF7] z-30 py-2 space-y-3 shadow-sm px-1">
+      <div class="flex items-center justify-between px-1">
+        <h2 class="text-xl font-bold text-[#8B5E3C]">账务全书</h2>
+        <el-tag type="info" size="small" round>共 {{ history.length }} 条记录</el-tag>
       </div>
 
-      <div v-for="(item, idx) in templateCopy" :key="idx" 
-           class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-        <div class="flex justify-between items-center mb-3">
-          <el-input v-model="item.name" size="small" placeholder="项目名称" class="w-1/2 font-bold" />
-          <el-button type="danger" link @click="removeTemplateItem(idx)">
-            <el-icon><Delete /></el-icon>
-          </el-button>
-        </div>
-        <div class="flex gap-4 items-center">
-          <div class="flex-1">
-            <span class="text-[10px] text-gray-400 block mb-1">数量/重量</span>
-            <el-input-number v-model="item.quantity" :min="0" size="small" :controls="false" class="w-full" />
-          </div>
-          <div class="flex-1">
-            <span class="text-[10px] text-gray-400 block mb-1">单价</span>
-            <el-input-number v-model="item.unit_price" :min="0" size="small" :controls="false" class="w-full" />
-          </div>
-          <div class="w-20 text-right">
-            <span class="text-[10px] text-gray-400 block mb-1">小计</span>
-            <span class="font-bold text-rose-500">￥{{ (item.quantity * item.unit_price).toFixed(0) }}</span>
-          </div>
+      <!-- 分类切换 -->
+      <div class="px-2">
+        <div class="bg-gray-100 p-1 rounded-xl flex items-center h-10">
+          <button 
+            v-for="tab in [
+              { label: '全部', value: 'all' },
+              { label: '收入', value: 'income' },
+              { label: '支出', value: 'cost' },
+              { label: '大车料', value: 'feed' }
+            ]" 
+            :key="tab.value"
+            @click="viewType = tab.value"
+            class="flex-1 h-full rounded-lg text-sm font-medium transition-all duration-200"
+            :class="viewType === tab.value 
+              ? 'bg-[#409EFF] text-white shadow-sm' 
+              : 'text-gray-500 hover:text-gray-700'"
+          >
+            {{ tab.label }}
+          </button>
         </div>
       </div>
 
-      <div class="flex gap-2 mt-4">
-        <el-button class="flex-1 border-dashed" @click="addTemplateItem">+ 增加项</el-button>
-        <el-button type="primary" class="flex-1 font-bold" @click="saveTemplateChanges" :loading="saving">保存修改</el-button>
+      <!-- 日期筛选器 -->
+      <div class="px-2">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          size="small"
+          value-format="YYYY-MM-DD"
+          @change="fetchData"
+          class="w-full"
+        />
       </div>
     </div>
 
-    <!-- 2. 全部流水 & 进货单 -->
-    <div v-else class="space-y-3 animate-in fade-in">
-      <!-- 进货统计头 -->
-      <div v-if="viewType === 'feed'" class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 mb-2 flex justify-between items-center">
-        <span class="text-emerald-800 font-bold">大车进货总支出</span>
-        <span class="text-emerald-700 font-bold font-mono">￥{{ feedTotalAmount.toLocaleString() }}</span>
+    <!-- 汇总统计卡片区 -->
+    <div class="px-2 space-y-4">
+      <div v-if="viewType === 'income'" class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex justify-between items-center">
+        <div><p class="text-xs text-emerald-600">总收入汇总</p><p class="text-xl font-black text-emerald-700">¥ {{ formatNum(stats.totalIncome) }}</p></div>
+        <div class="text-right text-[10px] text-emerald-500 leading-relaxed">🥛 奶款: ¥{{ formatNum(stats.milkIncome) }}<br>🐫 骆驼: ¥{{ formatNum(stats.camelIncome) }}</div>
       </div>
 
-      <!-- 循环真实账单列表 -->
-      <div 
-        v-for="item in filteredList" 
-        :key="item.id" 
-        class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between group"
-      >
-        <div class="flex items-center gap-4">
-          <div :class="getItemColor(item)" class="w-10 h-10 rounded-full flex items-center justify-center text-lg">
-            {{ getItemEmoji(item) }}
-          </div>
-          <div>
-            <p class="font-bold text-gray-800 text-sm">{{ item.category }}</p>
-            <p class="text-[10px] text-gray-400">
-              {{ item.date }} 
-              <span v-if="item.duration > 1">| 涵盖{{item.duration}}天</span>
-              <span v-if="item.weight">| {{item.weight}}吨</span>
-            </p>
-          </div>
-        </div>
+      <div v-if="viewType === 'cost'" class="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex justify-between items-center">
+        <div><p class="text-xs text-rose-600">总支出汇总 (不含进货)</p><p class="text-xl font-black text-rose-700">¥ {{ formatNum(stats.totalCost - stats.feedCost) }}</p></div>
+        <div class="text-right text-[10px] text-rose-500 leading-relaxed">🍴 日常喂食: ¥{{ formatNum(stats.dailyCost) }}<br>🚜 杂项开支: ¥{{ formatNum(stats.extraCost) }}</div>
+      </div>
 
-        <div class="text-right">
-          <p :class="item.isIncome ? 'text-emerald-500' : 'text-rose-500'" class="font-bold font-mono text-lg">
-            {{ item.isIncome ? '+' : '-' }}{{ item.amount.toLocaleString() }}
-          </p>
-          <button @click="handleDelete(item)" class="text-[10px] text-rose-300">删除</button>
+      <!-- 🔴 大车料专项聚合视图 -->
+      <div v-if="viewType === 'feed'" class="space-y-4">
+        <!-- 进货统计 -->
+        <div class="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex justify-between items-center">
+          <div><p class="text-xs text-orange-600">本期进货总支出</p><p class="text-xl font-black text-orange-700">¥ {{ formatNum(stats.feedCost) }}</p></div>
+          <div class="text-right"><p class="text-[10px] text-orange-500 font-bold">{{ stats.feedWeight.toFixed(2) }} 吨</p></div>
+        </div>
+        
+        <!-- 自家库存估值 -->
+        <div class="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-bold text-blue-800 flex items-center gap-1"><el-icon><Box /></el-icon> 自家存货估值</h3>
+            <span class="text-xs font-black text-blue-600">总估值: ¥ {{ formatNum(totalInventoryValue) }}</span>
+          </div>
+          <div class="space-y-2">
+            <div v-for="item in inventoryList" :key="item.id" class="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg">
+              <span class="font-medium text-gray-700">{{ item.category }}</span>
+              <div class="text-right">
+                <span class="text-gray-400">{{ Number(item.quantity).toFixed(2) }}吨</span>
+                <span class="ml-2 font-bold text-gray-600">≈ ¥{{ formatNum(item.quantity * item.unit_price) }}</span>
+              </div>
+            </div>
+            <div v-if="inventoryList.length === 0" class="text-center py-4 text-gray-300 text-[10px]">尚未录入库存</div>
+          </div>
+          <el-button size="small" class="w-full mt-3 border-dashed" @click="openInventoryModal">盘点/录入自家库存</el-button>
         </div>
       </div>
-      
-      <div v-if="filteredList.length === 0" class="py-20 text-center text-gray-300 text-sm">暂无记录</div>
     </div>
+
+    <!-- 列表展示 -->
+    <div v-loading="loading" class="space-y-6 px-2">
+      <div v-for="(group, month) in groupedHistory" :key="month">
+        <div class="flex items-center justify-between px-2 mb-3">
+          <span class="text-sm font-black text-gray-400">{{ month }}</span>
+          <div class="h-[1px] flex-1 mx-4 bg-gray-100"></div>
+          <div class="space-x-2 text-[10px] font-bold">
+            <span v-if="group.income > 0" class="text-emerald-500">收 ¥{{ formatNum(group.income) }}</span>
+            <span v-if="group.cost > 0" class="text-rose-500">支 ¥{{ formatNum(group.cost) }}</span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div v-for="item in group.items" :key="item.id || item.category" class="bg-white rounded-2xl shadow-sm border border-gray-50 overflow-hidden transition-all">
+            <div class="p-4 flex items-center justify-between active:bg-gray-50" @click="toggleExpand(item)">
+              <div class="flex items-center gap-3">
+                <div :class="getItemStyle(item).bg" class="w-10 h-10 rounded-full flex items-center justify-center text-lg">{{ getItemStyle(item).emoji }}</div>
+                <div>
+                  <p class="font-bold text-gray-800 text-sm">{{ item.category }}<el-icon v-if="item.isAggregated" class="ml-1 text-[10px] text-gray-400"><ArrowDown v-if="!isExpanded(item)" /><ArrowUp v-else /></el-icon></p>
+                  <div class="flex items-center gap-1 mt-0.5">
+                    <span class="text-[10px] text-gray-400">{{ item.isAggregated ? '本月累计' : item.date }}</span>
+                    <span v-if="item.totalQuantity || item.quantity" class="text-[10px] text-blue-500 flex items-center">&nbsp;(¥{{ item.unit_price || '-' }} × {{ item.totalQuantity || item.quantity }})</span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <p :class="item.isIncome ? 'text-emerald-500' : 'text-rose-500'" class="font-black">¥ {{ formatNum(item.amount) }}</p>
+                <button v-if="!item.isAggregated" @click.stop="handleDelete(item)" class="text-[10px] text-gray-300">删除</button>
+                <span v-else class="text-[10px] text-blue-400">查看明细</span>
+              </div>
+            </div>
+            <div v-if="isExpanded(item)" class="bg-gray-50 border-t border-dashed border-gray-200 px-4 py-2 space-y-2">
+              <div v-for="child in item.children" :key="child.id" class="flex justify-between items-center py-2 text-xs border-b border-gray-100 last:border-0">
+                <div class="text-gray-500">{{ child.date }}</div>
+                <div class="flex-1 px-4 text-gray-400 text-[10px]">数量: {{ child.quantity }} | 单价: ¥{{ child.unit_price }}</div>
+                <div class="font-bold text-rose-400">¥{{ formatNum(child.amount) }}</div>
+                <button @click="handleDelete(child)" class="ml-3 text-rose-300">删除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="history.length === 0" class="py-20 text-center text-gray-300 text-sm">此段暂无记录</div>
+    </div>
+    <!-- 弹窗预留 -->
+    <AddRecordModal ref="addModalRef" @success="fetchData" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, reactive } from 'vue'
 import { supabase } from '../lib/supabase'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, Box } from '@element-plus/icons-vue'
 import { dataService } from '../api/dataService'
+import AddRecordModal from './AddRecordModal.vue'
 
-const income = ref([])
-const cost = ref([])
-const settings = ref(null)
-const templateCopy = ref([]) // 用于编辑的模板副本
+const loading = ref(false)
+const history = ref([])
+const inventoryList = ref([])
 const viewType = ref('all')
-const saving = ref(false)
+const dateRange = ref([])
+const expandedKeys = reactive(new Set())
+const addModalRef = ref(null)
 
 const fetchData = async () => {
+  loading.value = true
   const { data: { user } } = await supabase.auth.getUser()
-  const [incRes, costRes, setRes] = await Promise.all([
-    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }),
-    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }),
-    supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+  
+  let incQuery = supabase.from('income').select('*').eq('user_id', user.id)
+  let costQuery = supabase.from('cost').select('*').eq('user_id', user.id)
+
+  if (dateRange.value?.length === 2) {
+    incQuery = incQuery.gte('date', dateRange.value[0]).lte('date', dateRange.value[1])
+    costQuery = costQuery.gte('date', dateRange.value[0]).lte('date', dateRange.value[1])
+  }
+
+  const [incRes, costRes, invRes] = await Promise.all([
+    incQuery.order('date', { ascending: false }),
+    costQuery.order('date', { ascending: false }),
+    dataService.getInventory()
   ])
-  income.value = incRes.data || []
-  cost.value = costRes.data || []
-  settings.value = setRes.data || null
-  
-  if (settings.value?.daily_template) {
-    templateCopy.value = JSON.parse(JSON.stringify(settings.value.daily_template))
-  }
+
+  history.value = [
+    ...(incRes.data || []).map(x => ({ ...x, isIncome: true })),
+    ...(costRes.data || []).map(x => ({ ...x, isIncome: false }))
+  ].sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  inventoryList.value = invRes
+  loading.value = false
 }
 
-// 每日模板的总金额 (基于副本计算)
-const dailyTemplateTotal = computed(() => {
-  return templateCopy.value.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0)
+const stats = computed(() => {
+  const s = { totalIncome: 0, milkIncome: 0, camelIncome: 0, totalCost: 0, feedCost: 0, dailyCost: 0, extraCost: 0, feedWeight: 0 }
+  history.value.forEach(i => {
+    if (i.isIncome) {
+      s.totalIncome += i.amount
+      if (i.category.includes('奶')) s.milkIncome += i.amount
+      else if (i.category.includes('骆驼')) s.camelIncome += i.amount
+    } else {
+      s.totalCost += i.amount
+      if (i.cost_type === '库存进货') { s.feedCost += i.amount; s.feedWeight += (Number(i.weight) || 0) }
+      else if (i.cost_type === '日常支出') s.dailyCost += i.amount
+      else s.extraCost += i.amount
+    }
+  })
+  return s
 })
 
-const feedTotalAmount = computed(() => {
-  return cost.value.filter(x => x.cost_type === '库存进货').reduce((s, i) => s + Number(i.amount), 0)
+const totalInventoryValue = computed(() => inventoryList.value.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0))
+
+const groupedHistory = computed(() => {
+  const groups = {}
+  let baseList = history.value
+  if (viewType.value === 'income') baseList = history.value.filter(x => x.isIncome)
+  else if (viewType.value === 'cost') baseList = history.value.filter(x => !x.isIncome && x.cost_type !== '库存进货')
+  else if (viewType.value === 'feed') baseList = history.value.filter(x => x.cost_type === '库存进货')
+
+  baseList.forEach(item => {
+    const month = item.date.substring(0, 7)
+    if (!groups[month]) groups[month] = { items: [], income: 0, cost: 0, _rawItems: [] }
+    if (item.isIncome) groups[month].income += item.amount
+    else groups[month].cost += item.amount
+    groups[month]._rawItems.push(item)
+  })
+
+  Object.keys(groups).forEach(month => {
+    if (viewType.value === 'cost') {
+      const aggMap = {}
+      groups[month]._rawItems.forEach(item => {
+        const key = item.category
+        if (!aggMap[key]) aggMap[key] = { category: key, amount: 0, totalQuantity: 0, isIncome: false, cost_type: item.cost_type, isAggregated: true, unit_price: item.unit_price, children: [] }
+        aggMap[key].amount += item.amount
+        aggMap[key].totalQuantity += (Number(item.quantity) || 0)
+        aggMap[key].children.push(item)
+      })
+      groups[month].items = Object.values(aggMap).sort((a,b) => b.amount - a.amount)
+    } else {
+      groups[month].items = groups[month]._rawItems
+    }
+  })
+  return groups
 })
 
-const filteredList = computed(() => {
-  if (viewType.value === 'feed') {
-    return cost.value
-      .filter(x => x.cost_type === '库存进货')
-      .map(x => ({ ...x, isIncome: false }))
+const toggleExpand = (item) => {
+  if (!item.isAggregated) return
+  const key = item.category + item.amount
+  if (expandedKeys.has(key)) expandedKeys.delete(key)
+  else expandedKeys.add(key)
+}
+
+const isExpanded = (item) => item.isAggregated && expandedKeys.has(item.category + item.amount)
+
+const getItemStyle = (i) => {
+  if (i.isIncome) {
+    return i.category.includes('骆驼') ? { bg: 'bg-emerald-100 text-emerald-600', emoji: '🐫' } : { bg: 'bg-emerald-50 text-emerald-500', emoji: '🥛' }
   }
-
-  // 🔴 核心逻辑：流水栏排除“日常支出”类型的记录
-  const list = [
-    ...income.value.map(x => ({ ...x, isIncome: true })),
-    ...cost.value.filter(x => x.cost_type !== '日常支出').map(x => ({ ...x, isIncome: false }))
-  ]
-  return list.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 100)
-})
-
-// --- 模板操作 ---
-const addTemplateItem = () => {
-  templateCopy.value.push({ name: '', quantity: 1, unit_price: 0 })
+  if (i.cost_type === '库存进货') return { bg: 'bg-orange-50 text-orange-500', emoji: '🌾' }
+  return (i.cost_type === '日常支出' || i.isAggregated) ? { bg: 'bg-blue-50 text-blue-400', emoji: '🍴' } : { bg: 'bg-gray-50 text-gray-500', emoji: '🚜' }
 }
 
-const removeTemplateItem = (idx) => {
-  templateCopy.value.splice(idx, 1)
-}
-
-const saveTemplateChanges = async () => {
-  if (templateCopy.value.some(i => !i.name.trim())) {
-    return ElMessage.warning('项目名称不能为空')
-  }
-  
-  saving.value = true
-  try {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('settings')
-      .update({ daily_template: templateCopy.value })
-      .eq('user_id', user.id)
-    
-    if (error) throw error
-    ElMessage.success('保存成功，利润计算已同步更新')
-    fetchData() // 重新同步
-  } catch (e) {
-    ElMessage.error('保存失败')
-  } finally {
-    saving.value = false
-  }
-}
-
-const getItemEmoji = (i) => {
-  if (i.isIncome) return '🥛'
-  if (i.cost_type === '库存进货') return '🌾'
-  return '🚜'
-}
-
-const getItemColor = (i) => {
-  if (i.isIncome) return 'bg-emerald-50 text-emerald-600'
-  if (i.cost_type === '库存进货') return 'bg-orange-50 text-orange-600'
-  return 'bg-gray-50 text-gray-600'
-}
+const formatNum = (n) => Math.abs(Math.round(n)).toLocaleString('en-US')
 
 const handleDelete = (item) => {
-  ElMessageBox.confirm(`确定删除这条记录吗？`, '警告').then(async () => {
-    const table = item.isIncome ? 'income' : 'cost'
-    await dataService.deleteRecord(table, item.id)
+  ElMessageBox.confirm('确定删除此记录吗？', '提示').then(async () => {
+    await dataService.deleteRecord(item.isIncome ? 'income' : 'cost', item.id)
     ElMessage.success('已删除')
     fetchData()
-  }).catch(() => {})
+  })
 }
+
+const openInventoryModal = () => addModalRef.value.openWithScene('录入库存')
 
 onMounted(fetchData)
 </script>
