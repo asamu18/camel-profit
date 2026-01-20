@@ -142,5 +142,33 @@ export const dataService = {
     }, { onConflict: 'user_id, category' })
     if (error) throw error
     return true
+  },
+
+  // 12. 增量更新库存 (用于进货时累加)
+  async incrementInventory(record) {
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // 1. 先查一下现有的库存是多少
+    const { data: existing } = await supabase
+      .from('inventory')
+      .select('quantity')
+      .eq('user_id', user.id)
+      .eq('category', record.category)
+      .maybeSingle()
+    
+    const oldQty = existing ? Number(existing.quantity) : 0
+    const newQty = oldQty + Number(record.weight)
+
+    // 2. 更新或插入新数值
+    const { error } = await supabase.from('inventory').upsert({
+      user_id: user.id,
+      category: record.category,
+      quantity: newQty,
+      unit_price: record.unit_price, // 更新为最新的进货单价作为估值
+      updated_at: new Date()
+    }, { onConflict: 'user_id, category' })
+
+    if (error) throw error
+    return true
   }
 }

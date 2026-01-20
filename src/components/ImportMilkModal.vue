@@ -3,11 +3,10 @@
     
     <div class="space-y-4">
       <div class="bg-blue-50 p-3 rounded-lg text-[11px] text-blue-700 leading-relaxed border border-blue-100">
-        <p class="font-bold mb-1 text-xs">🚀 极速模式：粘贴即可，系统自动计算跨度</p>
-        <p>系统会根据您粘贴的日期范围自动平摊利润，历史记录将保持原始数据不变。</p>
+        <p class="font-bold mb-1 text-xs">🚀 极速导入并同步成本</p>
+        <p>系统将自动识别日期跨度。如果导入的日期范围内缺少每日成本记录，系统将按当前模板自动补齐，确保利润计算准确。</p>
       </div>
 
-      <!-- 输入框 -->
       <el-input
         v-model="rawText"
         type="textarea"
@@ -24,7 +23,7 @@
         <div class="flex justify-between items-end">
           <p class="text-xs font-bold text-gray-500">识别预览 ({{ parsedRecords.length }}笔)</p>
           <div class="text-right">
-            <p class="text-[10px] text-orange-500">自动识别跨度: {{ autoSpan }} 天</p>
+            <p class="text-[10px] text-orange-500">日期跨度: {{ autoSpan }} 天</p>
             <p class="text-xs font-black text-emerald-600">总额: ¥{{ totalParsedAmount }}</p>
           </div>
         </div>
@@ -54,7 +53,7 @@
           class="flex-1 font-bold h-12" 
           @click="submitImport"
         >
-          立即录入真实账单
+          确认录入并补全成本
         </el-button>
       </div>
     </template>
@@ -70,7 +69,7 @@ const visible = ref(false)
 const rawText = ref('')
 const loading = ref(false)
 const parsedRecords = ref([])
-const autoSpan = ref(0) // 自动识别的总天数跨度
+const autoSpan = ref(0)
 
 const emit = defineEmits(['success'])
 
@@ -125,48 +124,96 @@ const parseText = async () => {
   })
 
   if (results.length > 0) {
-    // 🔴 智能跨度计算逻辑
     results.sort((a, b) => new Date(a.date) - new Date(b.date))
     const firstDate = new Date(results[0].date)
     const lastDate = new Date(results[results.length - 1].date)
     const diffTime = Math.abs(lastDate - firstDate)
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
-    
     autoSpan.value = diffDays
 
-    // 如果只有一条记录，读设置里的频率
     if (results.length === 1) {
       const { data } = await supabase.from('settings').select('milk_frequency').maybeSingle()
       results[0].duration = data?.milk_frequency || 1
       autoSpan.value = results[0].duration
     } else {
-      // 多条记录，将总跨度平均分配到每一笔上，确保 Dashboard 的 totalDaysCovered 总和等于跨度
       const perDuration = Math.max(1, Math.floor(diffDays / results.length))
       results.forEach((r, idx) => {
-        // 最后一条记录补齐余数
         if (idx === results.length - 1) r.duration = diffDays - (perDuration * (results.length - 1))
         else r.duration = perDuration
       })
     }
   }
-
   parsedRecords.value = results
+}
+
+// 🔴 核心功能：自动补全历史成本
+const fillMissingCosts = async (userId, firstDateStr, lastDateStr) => {
+  // 1. 获取用户当前的每日模板
+  const { data: settings } = await supabase.from('settings').select('daily_template').eq('user_id', userId).maybeSingle()
+  if (!settings || !settings.daily_template) return
+
+  // 2. 获取该范围内已有的成本记录日期，避免重复插入
+  const { data: existingCosts } = await supabase
+    .from('cost')
+    .select('date')
+    .eq('user_id', userId)
+    .eq('cost_type', '日常支出')
+    .gte('date', firstDateStr)
+    .lte('date', lastDateStr)
+  
+  const existingDates = new Set(existingCosts?.map(c => c.date))
+
+  // 3. 遍历日期范围，找出缺少的日期
+  const start = new Date(firstDateStr)
+  const end = new Date(lastDateStr)
+  const batchCosts = []
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().slice(0, 10)
+    if (!existingDates.has(dateStr)) {
+      // 该日期没有成本记录，准备插入模板内容
+      settings.daily_template.forEach(item => {
+        batchCosts.push({
+          user_id: userId,
+          date: dateStr,
+          category: item.name,
+          amount: Number(item.quantity) * Number(item.unit_price),
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          cost_type: '日常支出'
+        })
+      })
+    }
+  }
+
+  // 4. 批量执行插入
+  if (batchCosts.length > 0) {
+    await supabase.from('cost').insert(batchCosts)
+  }
 }
 
 const submitImport = async () => {
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    const finalData = parsedRecords.value.map(r => ({
+    
+    // 1. 录入奶款收入
+    const finalIncomeData = parsedRecords.value.map(r => ({
       ...r,
       user_id: user.id,
       category: '驼奶销售'
     }))
+    const { error: incError } = await supabase.from('income').insert(finalIncomeData)
+    if (incError) throw incError
 
-    const { error } = await supabase.from('income').insert(finalData)
-    if (error) throw error
+    // 2. 🔴 智能补全成本
+    if (parsedRecords.value.length > 0) {
+      // 找到这批记录的日期范围
+      const dates = parsedRecords.value.map(r => r.date).sort()
+      await fillMissingCosts(user.id, dates[0], dates[dates.length - 1])
+    }
 
-    ElMessage.success(`导入成功，已识别日期跨度 ${autoSpan.value} 天`)
+    ElMessage.success(`导入成功，已识别跨度 ${autoSpan.value} 天并自动对齐成本`)
     visible.value = false
     emit('success')
   } catch (e) {

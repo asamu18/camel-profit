@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <!-- 顶部设置入口 -->
     <div class="flex justify-between items-center px-1">
-      <div class="text-xs text-gray-400">版本 v1.1 - App 适配版</div>
+      <div class="text-xs text-gray-400">版本 v1.2 - 智能同步版</div>
       <button @click="openSettings" class="text-[#8B5E3C] text-sm flex items-center gap-1">
         <el-icon><Setting /></el-icon> 经营设置/重置
       </button>
@@ -16,7 +16,7 @@
       </div>
       <div class="flex justify-between items-center">
         <p class="text-[10px] text-gray-300 italic">
-          {{ hasTodayMilk ? '* 基于今日实账计算' : '* 基于模板预估' }}
+          {{ hasTodayMilk ? `* 已按 ${todayMilkDuration} 天产量平摊` : '* 基于模板预估' }}
         </p>
         <div class="opacity-10">
           <el-icon :size="24" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'"><TrendCharts /></el-icon>
@@ -62,7 +62,7 @@
       </div>
     </div>
 
-    <!-- 4. 本月/年利润预估卡片 (褐色) -->
+    <!-- 4. 本月/年利润预估卡片 -->
     <div class="bg-[#8B5E3C] p-6 rounded-[2.5rem] shadow-xl text-white">
       <div class="flex justify-between items-start mb-4">
         <div>
@@ -87,11 +87,10 @@
     <div class="space-y-3">
       <div class="grid grid-cols-2 gap-4">
         <button @click="openMilk" :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" class="py-5 rounded-3xl font-bold text-lg shadow-md text-white flex flex-col items-center">
-          <!-- 🔴 删除了下方的批量文字导入小字 -->
           <span>{{ hasTodayMilk ? '✅ 今日已交' : '🥛 刚交了奶' }}</span>
         </button>
         <button @click="openFeed" class="bg-emerald-600 text-white py-5 rounded-3xl font-bold text-lg shadow-md flex flex-col items-center">
-          <span>🌾 进大车料</span>
+          <span>🌾 进饲料</span>
         </button>
       </div>
       <button @click="openExtra" class="w-full bg-[#C4A484] text-white py-4 rounded-3xl font-bold text-lg shadow-md flex items-center justify-center gap-2">
@@ -106,21 +105,47 @@
     <SettingsModal ref="settingsRef" @saved="syncData" />
     <ImportMilkModal ref="importModalRef" @success="syncData" />
 
-    <!-- 每日模板编辑弹窗 -->
-    <el-dialog v-model="showTemplate" title="每日固定成本模板" width="90%" style="max-width: 450px" center destroy-on-close>
-      <div class="space-y-3">
-        <div v-for="(item, idx) in templateCopy" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-100">
-          <div class="flex justify-between items-center mb-2">
-            <el-input v-model="item.name" size="small" class="w-2/3 font-bold" />
-            <el-button type="danger" link @click="templateCopy.splice(idx, 1)"><el-icon><Delete /></el-icon></el-button>
+    <!-- 🔴 修改后的：每日模板编辑弹窗 (支持批量追溯) -->
+    <el-dialog v-model="showTemplate" title="每日固定成本管理" width="95%" style="max-width: 450px" center destroy-on-close>
+      <div class="space-y-4">
+        <!-- 列表部分 -->
+        <div class="max-h-[40vh] overflow-y-auto space-y-3 pr-1">
+          <div v-for="(item, idx) in templateCopy" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <div class="flex justify-between items-center mb-2">
+              <el-input v-model="item.name" size="small" class="w-2/3 font-bold" />
+              <el-button type="danger" link @click="templateCopy.splice(idx, 1)"><el-icon><Delete /></el-icon></el-button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <el-input-number v-model="item.quantity" :min="0" size="small" class="w-full" :controls="false" placeholder="数量" />
+              <el-input-number v-model="item.unit_price" :min="0" size="small" class="w-full" :controls="false" placeholder="单价" />
+            </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <el-input-number v-model="item.quantity" :min="0" size="small" class="w-full" :controls="false" />
-            <el-input-number v-model="item.unit_price" :min="0" size="small" class="w-full" :controls="false" />
+          <el-button class="w-full border-dashed" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加物料</el-button>
+        </div>
+
+        <!-- 🔴 核心新增：同步范围选择 -->
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mt-4">
+          <p class="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
+            <el-icon><Calendar /></el-icon> 同步修改到历史日期
+          </p>
+          <div class="flex flex-col gap-2">
+            <el-date-picker
+              v-model="batchSyncRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              size="small"
+              value-format="YYYY-MM-DD"
+              class="w-full"
+            />
+            <p class="text-[10px] text-blue-400 italic">* 选择日期范围后，选定天数的日常支出将自动更新</p>
           </div>
         </div>
-        <el-button class="w-full border-dashed" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加物料</el-button>
-        <el-button type="primary" class="w-full py-4 mt-4 font-bold" @click="saveTemplate" :loading="saving">保存修改</el-button>
+
+        <el-button type="primary" class="w-full py-6 font-bold text-lg rounded-2xl" @click="saveTemplate" :loading="saving">
+          确认修改并保存
+        </el-button>
       </div>
     </el-dialog>
   </div>
@@ -129,7 +154,7 @@
 <script setup>
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from '../lib/supabase'
-import { CircleCheckFilled, Setting, ArrowRight, Delete, TrendCharts, EditPen } from '@element-plus/icons-vue'
+import { CircleCheckFilled, Setting, ArrowRight, Delete, TrendCharts, EditPen, Calendar } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import AddRecordModal from './AddRecordModal.vue'
 import SetupWizard from './SetupWizard.vue'
@@ -150,16 +175,15 @@ const cost = ref([])
 const settings = ref(null)
 const showTemplate = ref(false)
 const templateCopy = ref([])
+const batchSyncRange = ref([]) // 🔴 批量同步范围
 const saving = ref(false)
 
 const toNum = (val) => Number(val) || 0
 
-// --- 格式化函数 ---
 const formatNum = (n) => {
   if (n === null || n === undefined) return '0'
   const rounded = Math.round(n)
-  const isNegative = rounded < 0
-  return (isNegative ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
+  return (rounded < 0 ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
 }
 
 // --- 计算属性 ---
@@ -180,6 +204,12 @@ const todayIncome = computed(() => {
 
 const hasTodayMilk = computed(() => todayIncome.value > 0)
 
+const todayMilkDuration = computed(() => {
+  const today = new Date().toISOString().slice(0, 10)
+  const record = income.value.find(i => i.date === today && i.category === '驼奶销售')
+  return record ? (toNum(record.duration) || 1) : 1
+})
+
 const todayExtraCost = computed(() => {
   const today = new Date().toISOString().slice(0, 10)
   return cost.value
@@ -188,9 +218,8 @@ const todayExtraCost = computed(() => {
 })
 
 const todayProfit = computed(() => {
-  const currentIncome = hasTodayMilk.value ? todayIncome.value : dailyPotentialIncome.value
-  const currentCost = dailyFixedCost.value + todayExtraCost.value
-  return currentIncome - currentCost
+  const effectiveDailyIncome = hasTodayMilk.value ? (todayIncome.value / todayMilkDuration.value) : dailyPotentialIncome.value
+  return effectiveDailyIncome - dailyFixedCost.value - todayExtraCost.value
 })
 
 const monthlyProfit = computed(() => {
@@ -241,23 +270,64 @@ const syncData = async () => {
   }
 }
 
+// 🔴 核心重构：保存并支持批量同步历史
 const saveTemplate = async () => {
   saving.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
+
+    // 1. 更新全局模板设置
     await supabase.from('settings').update({ daily_template: templateCopy.value }).eq('user_id', user.id)
-    await supabase.from('cost').delete().eq('user_id', user.id).eq('date', today).eq('cost_type', '日常支出')
-    const dailyRecords = templateCopy.value.map(item => ({
-      user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price),
-      quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
-    }))
-    if (dailyRecords.length > 0) await supabase.from('cost').insert(dailyRecords)
-    ElMessage.success('模板及今日账单已更新')
+
+    // 2. 确定需要同步的日期范围
+    let startDate = today
+    let endDate = today
+
+    if (batchSyncRange.value?.length === 2) {
+      startDate = batchSyncRange.value[0]
+      endDate = batchSyncRange.value[1]
+    }
+
+    // 3. 批量删除该范围内的旧日常支出
+    await supabase.from('cost')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('cost_type', '日常支出')
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    // 4. 循环插入新数据
+    const batchRecords = []
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10)
+      templateCopy.value.forEach(item => {
+        batchRecords.push({
+          user_id: user.id,
+          date: dateStr,
+          category: item.name,
+          amount: toNum(item.quantity) * toNum(item.unit_price),
+          quantity: toNum(item.quantity),
+          unit_price: toNum(item.unit_price),
+          cost_type: '日常支出'
+        })
+      })
+    }
+
+    if (batchRecords.length > 0) {
+      const { error } = await supabase.from('cost').insert(batchRecords)
+      if (error) throw error
+    }
+
+    ElMessage.success(batchSyncRange.value?.length ? '历史区间成本已同步更新' : '今日成本已更新')
     showTemplate.value = false
+    batchSyncRange.value = [] // 重置
     syncData()
   } catch (e) {
-    ElMessage.error('保存失败')
+    ElMessage.error('保存失败: ' + e.message)
   } finally {
     saving.value = false
   }
@@ -273,8 +343,6 @@ const openMilk = () => {
   addModalRef.value.openWithScene('卖奶')
 }
 
-// 批量文字导入
-const openAIImport = () => { if (importModalRef.value) importModalRef.value.open() }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
 const openExtra = () => addModalRef.value.openWithScene('其他')
 const openSettings = () => settingsRef.value.open()
@@ -284,26 +352,16 @@ onMounted(async () => {
   setTimeout(() => { if (wizardRef.value) wizardRef.value.check() }, 1000)
 })
 
-// 🔴 修改路由监听：响应 bulkImport
 watch(() => route.query.action, async (val) => {
-  if (!val) return
-  
-  // 等待组件挂载
-  if (!addModalRef.value || !importModalRef.value) await nextTick()
-
-  if (val === 'addMilk') {
-    openMilk()
-  } else if (val === 'bulkImport') {
-    openAIImport() // 🔴 触发文字导入
+  if (val === 'bulkImport') {
+    if (!importModalRef.value) await nextTick()
+    importModalRef.value.open()
   }
-
-  // 清理地址栏
-  setTimeout(() => {
-    router.replace({ path: '/', query: {} })
-  }, 500)
+  setTimeout(() => { router.replace({ path: '/', query: {} }) }, 500)
 }, { immediate: true })
 </script>
 
 <style scoped>
 .font-bold { font-family: system-ui, -apple-system, sans-serif; }
+:deep(.el-date-editor--daterange) { width: 100% !important; }
 </style>

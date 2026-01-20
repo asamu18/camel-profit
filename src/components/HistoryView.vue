@@ -1,28 +1,21 @@
 <template>
   <div class="space-y-4 pb-24">
-    <!-- 顶部导航与筛选 -->
+    <!-- 顶部导航与筛选 (保持不动) -->
     <div class="sticky top-0 bg-[#FDFBF7] z-30 py-2 space-y-3 shadow-sm px-1">
-      <div class="flex items-center justify-between px-1">
+      <div class="flex items-center justify-between px-2">
         <h2 class="text-xl font-bold text-[#8B5E3C]">账务全书</h2>
         <el-tag type="info" size="small" round>共 {{ history.length }} 条记录</el-tag>
       </div>
 
-      <!-- 分类切换 -->
+      <!-- 分段切换器 -->
       <div class="px-2">
         <div class="bg-gray-100 p-1 rounded-xl flex items-center h-10">
           <button 
-            v-for="tab in [
-              { label: '全部', value: 'all' },
-              { label: '收入', value: 'income' },
-              { label: '支出', value: 'cost' },
-              { label: '大车料', value: 'feed' }
-            ]" 
+            v-for="tab in [{ label: '全部', value: 'all' }, { label: '收入', value: 'income' }, { label: '支出', value: 'cost' }, { label: '饲料', value: 'feed' }]" 
             :key="tab.value"
             @click="viewType = tab.value"
-            class="flex-1 h-full rounded-lg text-sm font-medium transition-all duration-200"
-            :class="viewType === tab.value 
-              ? 'bg-[#409EFF] text-white shadow-sm' 
-              : 'text-gray-500 hover:text-gray-700'"
+            class="flex-1 h-full rounded-lg text-xs font-medium transition-all duration-200"
+            :class="viewType === tab.value ? 'bg-[#409EFF] text-white shadow-sm' : 'text-gray-500'"
           >
             {{ tab.label }}
           </button>
@@ -31,54 +24,74 @@
 
       <!-- 日期筛选器 -->
       <div class="px-2">
-        <el-date-picker
-          v-model="dateRange"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          size="small"
-          value-format="YYYY-MM-DD"
-          @change="fetchData"
-          class="w-full"
-        />
+        <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 px-2 shadow-sm">
+          <el-icon class="text-gray-400"><Calendar /></el-icon>
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            size="small"
+            value-format="YYYY-MM-DD"
+            :shortcuts="shortcuts"
+            @change="fetchData"
+            class="mobile-date-picker"
+            :teleported="true"
+          />
+        </div>
       </div>
     </div>
 
     <!-- 汇总统计卡片区 -->
     <div class="px-2 space-y-4">
-      <div v-if="viewType === 'income'" class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex justify-between items-center">
+      <!-- 收入汇总 (保持不动) -->
+      <div v-if="viewType === 'income'" class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in">
         <div><p class="text-xs text-emerald-600">总收入汇总</p><p class="text-xl font-black text-emerald-700">¥ {{ formatNum(stats.totalIncome) }}</p></div>
         <div class="text-right text-[10px] text-emerald-500 leading-relaxed">🥛 奶款: ¥{{ formatNum(stats.milkIncome) }}<br>🐫 骆驼: ¥{{ formatNum(stats.camelIncome) }}</div>
       </div>
 
-      <div v-if="viewType === 'cost'" class="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex justify-between items-center">
+      <!-- 支出汇总 (保持不动) -->
+      <div v-if="viewType === 'cost'" class="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex justify-between items-center animate-in fade-in">
         <div><p class="text-xs text-rose-600">总支出汇总 (不含进货)</p><p class="text-xl font-black text-rose-700">¥ {{ formatNum(stats.totalCost - stats.feedCost) }}</p></div>
         <div class="text-right text-[10px] text-rose-500 leading-relaxed">🍴 日常喂食: ¥{{ formatNum(stats.dailyCost) }}<br>🚜 杂项开支: ¥{{ formatNum(stats.extraCost) }}</div>
       </div>
 
-      <!-- 🔴 大车料专项聚合视图 -->
-      <div v-if="viewType === 'feed'" class="space-y-4">
-        <!-- 进货统计 -->
+      <!-- 饲料专项试图：进货统计 + 库存估值 -->
+      <div v-if="viewType === 'feed'" class="space-y-4 animate-in fade-in">
         <div class="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex justify-between items-center">
           <div><p class="text-xs text-orange-600">本期进货总支出</p><p class="text-xl font-black text-orange-700">¥ {{ formatNum(stats.feedCost) }}</p></div>
           <div class="text-right"><p class="text-[10px] text-orange-500 font-bold">{{ stats.feedWeight.toFixed(2) }} 吨</p></div>
         </div>
         
-        <!-- 自家库存估值 -->
+        <!-- 🔴 自家库存估值卡片 (核心修改) -->
         <div class="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm">
           <div class="flex justify-between items-center mb-3">
             <h3 class="text-sm font-bold text-blue-800 flex items-center gap-1"><el-icon><Box /></el-icon> 自家存货估值</h3>
             <span class="text-xs font-black text-blue-600">总估值: ¥ {{ formatNum(totalInventoryValue) }}</span>
           </div>
+          
           <div class="space-y-2">
-            <div v-for="item in inventoryList" :key="item.id" class="flex justify-between items-center text-xs bg-gray-50 p-2 rounded-lg">
-              <span class="font-medium text-gray-700">{{ item.category }}</span>
-              <div class="text-right">
-                <span class="text-gray-400">{{ Number(item.quantity).toFixed(2) }}吨</span>
-                <span class="ml-2 font-bold text-gray-600">≈ ¥{{ formatNum(item.quantity * item.unit_price) }}</span>
+            <div v-for="item in inventoryList" :key="item.id" class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+              <div class="flex justify-between items-start mb-1">
+                <span class="font-bold text-gray-700 text-sm">{{ item.category }}</span>
+                <div class="text-right">
+                  <span class="font-black text-gray-900 text-sm">≈ ¥{{ formatNum(item.quantity * item.unit_price) }}</span>
+                </div>
+              </div>
+              
+              <div class="flex justify-between items-center text-[10px]">
+                <div class="text-gray-400">
+                  当前库存: <span class="text-gray-600 font-bold">{{ Number(item.quantity).toFixed(2) }} 吨</span>
+                </div>
+                <!-- 🔴 智能计算：显示还能吃多久 -->
+                <div v-if="getDaysLeft(item)" class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  预计还能用 {{ getDaysLeft(item) }} 天
+                </div>
+                <div v-else class="text-gray-300">不在每日模板中</div>
               </div>
             </div>
+            
             <div v-if="inventoryList.length === 0" class="text-center py-4 text-gray-300 text-[10px]">尚未录入库存</div>
           </div>
           <el-button size="small" class="w-full mt-3 border-dashed" @click="openInventoryModal">盘点/录入自家库存</el-button>
@@ -86,7 +99,7 @@
       </div>
     </div>
 
-    <!-- 列表展示 -->
+    <!-- 列表展示 (保持不动) -->
     <div v-loading="loading" class="space-y-6 px-2">
       <div v-for="(group, month) in groupedHistory" :key="month">
         <div class="flex items-center justify-between px-2 mb-3">
@@ -107,7 +120,7 @@
                   <p class="font-bold text-gray-800 text-sm">{{ item.category }}<el-icon v-if="item.isAggregated" class="ml-1 text-[10px] text-gray-400"><ArrowDown v-if="!isExpanded(item)" /><ArrowUp v-else /></el-icon></p>
                   <div class="flex items-center gap-1 mt-0.5">
                     <span class="text-[10px] text-gray-400">{{ item.isAggregated ? '本月累计' : item.date }}</span>
-                    <span v-if="item.totalQuantity || item.quantity" class="text-[10px] text-blue-500 flex items-center">&nbsp;(¥{{ item.unit_price || '-' }} × {{ item.totalQuantity || item.quantity }})</span>
+                    <span v-if="item.totalQuantity || item.quantity" class="text-[10px] text-[#409EFF] flex items-center">&nbsp;(¥{{ item.unit_price || '-' }} × {{ item.totalQuantity || item.quantity }})</span>
                   </div>
                 </div>
               </div>
@@ -128,9 +141,8 @@
           </div>
         </div>
       </div>
-      <div v-if="history.length === 0" class="py-20 text-center text-gray-300 text-sm">此段暂无记录</div>
     </div>
-    <!-- 弹窗预留 -->
+
     <AddRecordModal ref="addModalRef" @success="fetchData" />
   </div>
 </template>
@@ -139,34 +151,51 @@
 import { ref, onMounted, computed, reactive } from 'vue'
 import { supabase } from '../lib/supabase'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { ArrowDown, ArrowUp, Box } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, Box, Calendar } from '@element-plus/icons-vue'
 import { dataService } from '../api/dataService'
 import AddRecordModal from './AddRecordModal.vue'
 
 const loading = ref(false)
 const history = ref([])
 const inventoryList = ref([])
+const settings = ref(null) // 🔴 增加 settings 存储
 const viewType = ref('all')
 const dateRange = ref([])
 const expandedKeys = reactive(new Set())
 const addModalRef = ref(null)
 
+const shortcuts = [
+  { text: '近一周', value: () => { const end = new Date(); const start = new Date(); start.setTime(start.getTime() - 3600 * 1000 * 24 * 7); return [start, end] }},
+  { text: '近一月', value: () => { const end = new Date(); const start = new Date(); start.setMonth(start.getMonth() - 1); return [start, end] }},
+  { text: '今年', value: () => { const end = new Date(); const start = new Date(new Date().getFullYear(), 0, 1); return [start, end] }}
+]
+
+// 🔴 核心功能：计算某种饲料还能撑几天
+const getDaysLeft = (inventoryItem) => {
+  if (!settings.value?.daily_template) return null
+  
+  // 查找模板中名称完全一致的项目
+  const templateItem = settings.value.daily_template.find(t => t.name === inventoryItem.category)
+  
+  if (!templateItem || Number(templateItem.quantity) <= 0) return null
+  
+  // 换算逻辑：(库存吨数 * 1000) / 每日消耗数量
+  const totalKg = Number(inventoryItem.quantity) * 1000
+  const dailyKg = Number(templateItem.quantity)
+  
+  return Math.floor(totalKg / dailyKg)
+}
+
 const fetchData = async () => {
   loading.value = true
   const { data: { user } } = await supabase.auth.getUser()
   
-  let incQuery = supabase.from('income').select('*').eq('user_id', user.id)
-  let costQuery = supabase.from('cost').select('*').eq('user_id', user.id)
-
-  if (dateRange.value?.length === 2) {
-    incQuery = incQuery.gte('date', dateRange.value[0]).lte('date', dateRange.value[1])
-    costQuery = costQuery.gte('date', dateRange.value[0]).lte('date', dateRange.value[1])
-  }
-
-  const [incRes, costRes, invRes] = await Promise.all([
-    incQuery.order('date', { ascending: false }),
-    costQuery.order('date', { ascending: false }),
-    dataService.getInventory()
+  // 🔴 增加 settings 拉取
+  const [incRes, costRes, invRes, setRes] = await Promise.all([
+    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+    dataService.getInventory(),
+    supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
   ])
 
   history.value = [
@@ -175,9 +204,11 @@ const fetchData = async () => {
   ].sort((a, b) => new Date(b.date) - new Date(a.date))
 
   inventoryList.value = invRes
+  settings.value = setRes.data
   loading.value = false
 }
 
+// 其余统计和格式化代码保持不动...
 const stats = computed(() => {
   const s = { totalIncome: 0, milkIncome: 0, camelIncome: 0, totalCost: 0, feedCost: 0, dailyCost: 0, extraCost: 0, feedWeight: 0 }
   history.value.forEach(i => {
@@ -217,7 +248,7 @@ const groupedHistory = computed(() => {
       const aggMap = {}
       groups[month]._rawItems.forEach(item => {
         const key = item.category
-        if (!aggMap[key]) aggMap[key] = { category: key, amount: 0, totalQuantity: 0, isIncome: false, cost_type: item.cost_type, isAggregated: true, unit_price: item.unit_price, children: [] }
+        if (!aggMap[key]) { aggMap[key] = { category: key, amount: 0, totalQuantity: 0, isIncome: false, cost_type: item.cost_type, isAggregated: true, unit_price: item.unit_price, children: [] } }
         aggMap[key].amount += item.amount
         aggMap[key].totalQuantity += (Number(item.quantity) || 0)
         aggMap[key].children.push(item)
@@ -236,13 +267,10 @@ const toggleExpand = (item) => {
   if (expandedKeys.has(key)) expandedKeys.delete(key)
   else expandedKeys.add(key)
 }
-
 const isExpanded = (item) => item.isAggregated && expandedKeys.has(item.category + item.amount)
 
 const getItemStyle = (i) => {
-  if (i.isIncome) {
-    return i.category.includes('骆驼') ? { bg: 'bg-emerald-100 text-emerald-600', emoji: '🐫' } : { bg: 'bg-emerald-50 text-emerald-500', emoji: '🥛' }
-  }
+  if (i.isIncome) return i.category.includes('骆驼') ? { bg: 'bg-emerald-100 text-emerald-600', emoji: '🐫' } : { bg: 'bg-emerald-50 text-emerald-500', emoji: '🥛' }
   if (i.cost_type === '库存进货') return { bg: 'bg-orange-50 text-orange-500', emoji: '🌾' }
   return (i.cost_type === '日常支出' || i.isAggregated) ? { bg: 'bg-blue-50 text-blue-400', emoji: '🍴' } : { bg: 'bg-gray-50 text-gray-500', emoji: '🚜' }
 }
@@ -258,6 +286,13 @@ const handleDelete = (item) => {
 }
 
 const openInventoryModal = () => addModalRef.value.openWithScene('录入库存')
-
 onMounted(fetchData)
 </script>
+
+<style scoped>
+:deep(.mobile-date-picker) { border: none !important; box-shadow: none !important; width: 100% !important; padding: 0 !important; background: transparent !important; }
+:deep(.el-range-input) { font-size: 13px !important; width: 40% !important; background: transparent !important; }
+:deep(.el-range-separator) { padding: 0 !important; font-size: 12px; color: #ccc; }
+:deep(.el-input__icon) { display: none !important; }
+.font-black { font-family: system-ui, -apple-system, sans-serif; }
+</style>
