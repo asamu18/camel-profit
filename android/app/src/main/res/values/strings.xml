@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">驼账宝</string>
+    <string name="title_activity_main">驼账宝</string>
+    <string name="package_name">com.camelprofit.app</string>
+    <string name="custom_url_scheme">com.camelprofit.app</string>
+</resources>
