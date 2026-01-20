@@ -1,9 +1,8 @@
 <template>
   <Login v-if="!session" />
-  <!-- 🔴 修改点：min-h-screen 配合 env 变量 -->
   <div v-else class="min-h-screen bg-[#FDFBF7] max-w-md mx-auto shadow-xl border-x border-gray-100 flex flex-col">
     
-    <!-- 🔴 顶部 Header：适配刘海屏 -->
+    <!-- 顶部 Header -->
     <header 
       class="bg-[#8B5E3C] text-white p-6 rounded-b-3xl shadow-lg sticky top-0 z-50"
       :style="{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top))' }"
@@ -17,7 +16,7 @@
       <router-view />
     </main>
 
-    <!-- 🔴 底部导航：适配底部操作条 -->
+    <!-- 底部导航 -->
     <nav 
       class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex justify-around shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40"
       :style="{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))', paddingTop: '0.75rem' }"
@@ -27,10 +26,10 @@
         <span class="text-[10px] font-medium">首页</span>
       </router-link>
 
-      <!-- 中间加号按钮 -->
+      <!-- 🔴 加号按钮：现在负责触发“批量文字导入” -->
       <div class="relative -mt-10">
         <button 
-          @click="triggerAddMilk" 
+          @click="triggerBulkImport" 
           class="p-4 rounded-full shadow-xl bg-[#F59E0B] text-white border-4 border-white active:scale-95 transition-transform"
         >
           <el-icon :size="24"><Plus /></el-icon>
@@ -55,8 +54,15 @@ import { useRouter } from 'vue-router'
 const session = ref(null)
 const router = useRouter()
 
-const triggerAddMilk = () => {
-  router.push({ path: '/', query: { action: 'addMilk' }})
+// 🔴 修改：点击加号跳转并带上导入指令
+const triggerBulkImport = () => {
+  router.push({ 
+    path: '/', 
+    query: { 
+      action: 'bulkImport', 
+      t: Date.now() 
+    }
+  })
 }
 
 onMounted(() => {
@@ -66,15 +72,7 @@ onMounted(() => {
 </script>
 
 <style>
-/* 🔴 确保 body 背景色和 header 一致，这样刘海区域不会出现白边 */
-body {
-  background-color: #8B5E3C; 
-  margin: 0;
-  padding: 0;
-}
-
-#app {
-  background-color: #FDFBF7; /* 内容区底色 */
-  min-height: 100vh;
-}
+body { background-color: #8B5E3C; margin: 0; padding: 0; }
+#app { background-color: #FDFBF7; min-height: 100vh; }
+::-webkit-scrollbar { display: none; }
 </style>

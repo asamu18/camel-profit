@@ -12,39 +12,35 @@
     <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
       <span class="text-gray-400 text-sm">今日预计净利润</span>
       <div :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-        <!-- 统一符号 ¥ 和三位逗号格式 -->
         <span class="text-3xl font-bold">¥ {{ formatNum(todayProfit) }}</span>
       </div>
       <div class="flex justify-between items-center">
-  <p class="text-[10px] text-gray-300 italic">
-    {{ hasTodayMilk ? '* 基于今日实账计算' : '* 基于模板预估' }}
-  </p>
-  <div class="opacity-10">
-    <el-icon :size="24" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-      <TrendCharts />
-    </el-icon>
-  </div>
-</div>
+        <p class="text-[10px] text-gray-300 italic">
+          {{ hasTodayMilk ? '* 基于今日实账计算' : '* 基于模板预估' }}
+        </p>
+        <div class="opacity-10">
+          <el-icon :size="24" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'"><TrendCharts /></el-icon>
+        </div>
+      </div>
     </div>
 
     <!-- 数据看板 -->
     <div class="grid grid-cols-2 gap-4">
       <!-- 2. 今日交奶实收 -->
       <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
-        <span class="text-gray-400 text-sm">今日交奶实收</span>
+        <div class="h-5 flex items-center">
+          <span class="text-gray-400 text-sm">今日交奶实收</span>
+        </div>
         <div>
           <span class="text-2xl font-bold" :class="hasTodayMilk ? 'text-emerald-500' : 'text-gray-300'">
-            <!-- 这里也统一加上 ¥ 和 formatNum -->
             ¥ {{ formatNum(todayIncome) }}
           </span>
-          <!-- 🔴 关键修复：无论是否有数据，都保持一行高度，确保数值不上移或下沉 -->
-      <div class="h-4 mt-1">
-          <p v-if="!hasTodayMilk" class="text-[10px] text-orange-400 mt-1">
-            预计: ¥ {{ formatNum(dailyPotentialIncome) }}
-          </p>
-          <!-- 已交奶时，放一个透明的占位符保持高度一致 -->
-        <p v-else class="text-[10px] opacity-0">占位</p>
-        </div>
+          <div class="h-4 mt-1">
+            <p v-if="!hasTodayMilk" class="text-[10px] text-orange-400">
+              预计: ¥ {{ formatNum(dailyPotentialIncome) }}
+            </p>
+            <p v-else class="text-[10px] opacity-0">占位</p>
+          </div>
         </div>
         <div v-if="hasTodayMilk" class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12">
           <el-icon :size="60"><CircleCheckFilled /></el-icon>
@@ -53,13 +49,15 @@
 
       <!-- 3. 每日固定成本卡片 -->
       <div @click="showTemplate = true" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 active:bg-gray-50 transition-colors">
-        <div class="flex justify-between items-center">
+        <div class="h-5 flex justify-between items-center">
           <span class="text-gray-400 text-sm">每日固定成本</span>
           <el-icon class="text-gray-300"><ArrowRight /></el-icon>
         </div>
         <div>
           <span class="text-2xl font-bold text-rose-500">¥ {{ formatNum(dailyFixedCost) }}</span>
-          <p class="text-[10px] text-blue-400 mt-1">点击修改明细</p>
+          <div class="h-4 mt-1">
+            <p class="text-[10px] text-blue-400">点击修改明细</p>
+          </div>
         </div>
       </div>
     </div>
@@ -89,9 +87,8 @@
     <div class="space-y-3">
       <div class="grid grid-cols-2 gap-4">
         <button @click="openMilk" :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" class="py-5 rounded-3xl font-bold text-lg shadow-md text-white flex flex-col items-center">
+          <!-- 🔴 删除了下方的批量文字导入小字 -->
           <span>{{ hasTodayMilk ? '✅ 今日已交' : '🥛 刚交了奶' }}</span>
-          <!-- 🔴 增加一个小字入口 -->
-  <span @click.stop="openAIImport" class="text-[10px] mt-1 underline opacity-80">批量文字导入</span>
         </button>
         <button @click="openFeed" class="bg-emerald-600 text-white py-5 rounded-3xl font-bold text-lg shadow-md flex flex-col items-center">
           <span>🌾 进大车料</span>
@@ -103,11 +100,13 @@
       </button>
     </div>
 
-    <!-- 弹窗部分保持不变 -->
+    <!-- 弹窗组件 -->
     <AddRecordModal ref="addModalRef" @success="syncData" />
     <SetupWizard ref="wizardRef" @finish="syncData" />
     <SettingsModal ref="settingsRef" @saved="syncData" />
+    <ImportMilkModal ref="importModalRef" @success="syncData" />
 
+    <!-- 每日模板编辑弹窗 -->
     <el-dialog v-model="showTemplate" title="每日固定成本模板" width="90%" style="max-width: 450px" center destroy-on-close>
       <div class="space-y-3">
         <div v-for="(item, idx) in templateCopy" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-100">
@@ -126,25 +125,22 @@
     </el-dialog>
   </div>
 </template>
-<!-- 底部挂载新组件 -->
-<ImportMilkModal ref="importModalRef" @success="syncData" />
-
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from '../lib/supabase'
 import { CircleCheckFilled, Setting, ArrowRight, Delete, TrendCharts, EditPen } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import AddRecordModal from './AddRecordModal.vue'
 import SetupWizard from './SetupWizard.vue'
 import SettingsModal from './SettingsModal.vue'
+import ImportMilkModal from './ImportMilkModal.vue'
 import { useRoute, useRouter } from 'vue-router'
-
-
 
 const addModalRef = ref(null)
 const wizardRef = ref(null)
 const settingsRef = ref(null)
+const importModalRef = ref(null)
 const route = useRoute()
 const router = useRouter()
 
@@ -158,12 +154,11 @@ const saving = ref(false)
 
 const toNum = (val) => Number(val) || 0
 
-// --- 修复点：核心格式化函数 ---
+// --- 格式化函数 ---
 const formatNum = (n) => {
   if (n === null || n === undefined) return '0'
   const rounded = Math.round(n)
   const isNegative = rounded < 0
-  // 强制使用美国英语格式以确保三位一个逗号，同时手动处理负号
   return (isNegative ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
 }
 
@@ -178,6 +173,13 @@ const dailyFixedCost = computed(() => {
   return list.reduce((s, i) => s + (toNum(i.quantity) * toNum(i.unit_price)), 0)
 })
 
+const todayIncome = computed(() => {
+  const today = new Date().toISOString().slice(0, 10)
+  return income.value.filter(i => i.date === today && i.category === '驼奶销售').reduce((s, i) => s + toNum(i.amount), 0)
+})
+
+const hasTodayMilk = computed(() => todayIncome.value > 0)
+
 const todayExtraCost = computed(() => {
   const today = new Date().toISOString().slice(0, 10)
   return cost.value
@@ -185,23 +187,11 @@ const todayExtraCost = computed(() => {
     .reduce((s, i) => s + toNum(i.amount), 0)
 })
 
-// 2. 修改今日预计净利润：实账优先，模板保底
 const todayProfit = computed(() => {
-  // 收入部分：如果今天交了奶，就用今天实际交奶的钱；否则，用模板预估的日收入
   const currentIncome = hasTodayMilk.value ? todayIncome.value : dailyPotentialIncome.value
-  
-  // 支出部分：固定成本模板 + 今日发生的额外支出
   const currentCost = dailyFixedCost.value + todayExtraCost.value
-  
   return currentIncome - currentCost
 })
-
-const todayIncome = computed(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  return income.value.filter(i => i.date === today && i.category === '驼奶销售').reduce((s, i) => s + toNum(i.amount), 0)
-})
-
-const hasTodayMilk = computed(() => todayIncome.value > 0)
 
 const monthlyProfit = computed(() => {
   if (!settings.value) return 0
@@ -234,9 +224,7 @@ const monthlyExtra = computed(() => {
   }).reduce((s, i) => s + toNum(i.amount), 0)
 })
 
-const advice = computed(() => hasTodayMilk.value ? "今日已交奶，平摊后的利润已更新！" : "点击下方黄色按钮记录交奶实账。")
-
-// --- 方法同步 ---
+// --- 方法 ---
 const syncData = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
@@ -253,51 +241,30 @@ const syncData = async () => {
   }
 }
 
-// src/components/Dashboard.vue 中的 saveTemplate 方法
 const saveTemplate = async () => {
   saving.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
-
-    // 1. 更新设置表中的模板
-    const { error: setErr } = await supabase
-      .from('settings')
-      .update({ daily_template: templateCopy.value })
-      .eq('user_id', user.id)
-    if (setErr) throw setErr
-
-    // 2. 🔴 关键逻辑：将模板同步为今天的“实账”
-    // 先删除今天已有的旧“日常支出”，防止重复
+    await supabase.from('settings').update({ daily_template: templateCopy.value }).eq('user_id', user.id)
     await supabase.from('cost').delete().eq('user_id', user.id).eq('date', today).eq('cost_type', '日常支出')
-
-    // 插入新的明细记录
     const dailyRecords = templateCopy.value.map(item => ({
-      user_id: user.id,
-      date: today,
-      category: item.name,
-      amount: toNum(item.quantity) * toNum(item.unit_price),
-      quantity: toNum(item.quantity),
-      unit_price: toNum(item.unit_price),
-      cost_type: '日常支出' // 标记为模板生成的日常开支
+      user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price),
+      quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
     }))
-
-    if (dailyRecords.length > 0) {
-      const { error: costErr } = await supabase.from('cost').insert(dailyRecords)
-      if (costErr) throw costErr
-    }
-
-    ElMessage.success('模板已更新，今日账单已同步')
+    if (dailyRecords.length > 0) await supabase.from('cost').insert(dailyRecords)
+    ElMessage.success('模板及今日账单已更新')
     showTemplate.value = false
-    syncData() // 刷新首页数据
-  } catch (err) {
-    ElMessage.error('保存失败: ' + err.message)
+    syncData()
+  } catch (e) {
+    ElMessage.error('保存失败')
   } finally {
     saving.value = false
   }
 }
 
 const openMilk = () => {
+  if (!addModalRef.value) return
   if (hasTodayMilk.value) {
     ElMessageBox.confirm('今日已记账，如需修改请前往历史页面。', '提示', { confirmButtonText: '去历史', cancelButtonText: '取消' })
       .then(() => router.push('/history'))
@@ -305,30 +272,38 @@ const openMilk = () => {
   }
   addModalRef.value.openWithScene('卖奶')
 }
+
+// 批量文字导入
+const openAIImport = () => { if (importModalRef.value) importModalRef.value.open() }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
 const openExtra = () => addModalRef.value.openWithScene('其他')
 const openSettings = () => settingsRef.value.open()
 
 onMounted(async () => {
-  // 1. 先同步一次数据
   await syncData()
-
-  // 2. 稍微延迟一下，确保组件 ref 已挂载
-  setTimeout(() => {
-    if (wizardRef.value) {
-      console.log("正在执行向导自动检查...")
-      wizardRef.value.check()
-    }
-  }, 500) // 500ms 足够了
+  setTimeout(() => { if (wizardRef.value) wizardRef.value.check() }, 1000)
 })
-watch(() => route.query.action, (val) => { if (val === 'addMilk') openMilk() })
 
+// 🔴 修改路由监听：响应 bulkImport
+watch(() => route.query.action, async (val) => {
+  if (!val) return
+  
+  // 等待组件挂载
+  if (!addModalRef.value || !importModalRef.value) await nextTick()
 
+  if (val === 'addMilk') {
+    openMilk()
+  } else if (val === 'bulkImport') {
+    openAIImport() // 🔴 触发文字导入
+  }
+
+  // 清理地址栏
+  setTimeout(() => {
+    router.replace({ path: '/', query: {} })
+  }, 500)
+}, { immediate: true })
 </script>
 
 <style scoped>
-/* 🔴 移除 font-mono，确保符号 ¥ 在默认字体下呈现双横线形态 */
-.font-bold {
-  font-family: system-ui, -apple-system, sans-serif;
-}
+.font-bold { font-family: system-ui, -apple-system, sans-serif; }
 </style>
