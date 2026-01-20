@@ -1,4 +1,16 @@
 <template>
+  <!-- 🔴 增加 initialLoading 判断 -->
+  <div v-if="initialLoading" class="min-h-screen flex items-center justify-center bg-[#8B5E3C]">
+    <div class="text-white text-xl font-bold animate-pulse">驼账宝加载中...</div>
+  </div>
+
+  <template v-else>
+    <Login v-if="!session" />
+    <div v-else class="..."> 
+      <!-- 主页内容 -->
+    </div>
+  
+</template>
   <Login v-if="!session" />
   <div v-else class="min-h-screen bg-[#FDFBF7] max-w-md mx-auto shadow-xl border-x border-gray-100 flex flex-col">
     
@@ -53,6 +65,21 @@ import { useRouter } from 'vue-router'
 
 const session = ref(null)
 const router = useRouter()
+const initialLoading = ref(true) // 🔴 默认为 true
+
+onMounted(async () => {
+  // 检查一次会话
+  const { data } = await supabase.auth.getSession()
+  session.value = data.session
+  
+  // 监听状态变化
+  supabase.auth.onAuthStateChange((_event, _session) => {
+    session.value = _session
+  })
+  
+  // 确认完身份后再关闭加载页
+  initialLoading.value = false
+})
 
 // 🔴 修改：点击加号跳转并带上导入指令
 const triggerBulkImport = () => {
