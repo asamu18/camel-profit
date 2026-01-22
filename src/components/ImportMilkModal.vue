@@ -4,17 +4,14 @@
     <div class="space-y-4">
       <div class="bg-blue-50 p-3 rounded-lg text-[11px] text-blue-700 leading-relaxed border border-blue-100">
         <p class="font-bold mb-1 text-xs">🚀 极速导入并同步成本</p>
-        <p>系统将自动识别日期跨度。如果导入的日期范围内缺少每日成本记录，系统将按当前模板自动补齐，确保利润计算准确。</p>
+        <p>系统将自动识别日期跨度并补齐对应日期的成本，确保利润计算准确。</p>
       </div>
 
       <el-input
         v-model="rawText"
         type="textarea"
         :rows="10"
-        placeholder="请在此粘贴交奶记录，例如：
-1月1号 交奶50kg 价格30
-1月5号 交奶48kg 价格30
-..."
+        placeholder="请在此粘贴交奶记录..."
         @input="parseText"
       />
 
@@ -70,7 +67,6 @@ const rawText = ref('')
 const loading = ref(false)
 const parsedRecords = ref([])
 const autoSpan = ref(0)
-
 const emit = defineEmits(['success'])
 
 const totalParsedAmount = computed(() => {
@@ -78,10 +74,7 @@ const totalParsedAmount = computed(() => {
 })
 
 const open = () => {
-  visible.value = true
-  rawText.value = ''
-  parsedRecords.value = []
-  autoSpan.value = 0
+  visible.value = true; rawText.value = ''; parsedRecords.value = []; autoSpan.value = 0
 }
 
 const parseText = async () => {
@@ -114,9 +107,7 @@ const parseText = async () => {
 
     let unitPrice = 0
     const priceMatch = line.match(/(单价|价格|每公斤|元\/kg)\s*(\d+(\.\d+)?)/) || line.match(/(\d+(\.\d+)?)\s*(元|块)/)
-    if (priceMatch) {
-      unitPrice = parseFloat(priceMatch[2] || priceMatch[1])
-    }
+    if (priceMatch) unitPrice = parseFloat(priceMatch[2] || priceMatch[1])
 
     if (quantity > 0 && unitPrice > 0) {
       results.push({ date, quantity, unit_price: unitPrice, amount: quantity * unitPrice, duration: 1 })
@@ -127,105 +118,65 @@ const parseText = async () => {
     results.sort((a, b) => new Date(a.date) - new Date(b.date))
     const firstDate = new Date(results[0].date)
     const lastDate = new Date(results[results.length - 1].date)
-    const diffTime = Math.abs(lastDate - firstDate)
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+    const diffDays = Math.ceil(Math.abs(lastDate - firstDate) / (1000 * 60 * 60 * 24)) + 1
     autoSpan.value = diffDays
 
+    // 🔴 智能时长分配逻辑
+    const { data: userSet } = await supabase.from('settings').select('milk_frequency').maybeSingle()
+    const freq = userSet?.milk_frequency || 1
+
     if (results.length === 1) {
-      const { data } = await supabase.from('settings').select('milk_frequency').maybeSingle()
-      results[0].duration = data?.milk_frequency || 1
-      autoSpan.value = results[0].duration
+      results[0].duration = freq
+      autoSpan.value = freq
     } else {
       const perDuration = Math.max(1, Math.floor(diffDays / results.length))
       results.forEach((r, idx) => {
-        if (idx === results.length - 1) r.duration = diffDays - (perDuration * (results.length - 1))
-        else r.duration = perDuration
+        r.duration = (idx === results.length - 1) ? (diffDays - (perDuration * (results.length - 1))) : perDuration
       })
     }
   }
   parsedRecords.value = results
 }
 
-// 🔴 核心功能：自动补全历史成本
-const fillMissingCosts = async (userId, firstDateStr, lastDateStr) => {
-  // 1. 获取用户当前的每日模板
-  const { data: settings } = await supabase.from('settings').select('daily_template').eq('user_id', userId).maybeSingle()
-  if (!settings || !settings.daily_template) return
+const fillMissingCosts = async (userId, startStr, endStr) => {
+  const { data: set } = await supabase.from('settings').select('daily_template').eq('user_id', userId).maybeSingle()
+  if (!set?.daily_template) return
 
-  // 2. 获取该范围内已有的成本记录日期，避免重复插入
-  const { data: existingCosts } = await supabase
-    .from('cost')
-    .select('date')
-    .eq('user_id', userId)
-    .eq('cost_type', '日常支出')
-    .gte('date', firstDateStr)
-    .lte('date', lastDateStr)
-  
-  const existingDates = new Set(existingCosts?.map(c => c.date))
+  const { data: exist } = await supabase.from('cost').select('date').eq('user_id', userId).eq('cost_type', '日常支出').gte('date', startStr).lte('date', endStr)
+  const existDates = new Set(exist?.map(c => c.date))
 
-  // 3. 遍历日期范围，找出缺少的日期
-  const start = new Date(firstDateStr)
-  const end = new Date(lastDateStr)
-  const batchCosts = []
-
+  const start = new Date(startStr); const end = new Date(endStr); const batch = []
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dateStr = d.toISOString().slice(0, 10)
-    if (!existingDates.has(dateStr)) {
-      // 该日期没有成本记录，准备插入模板内容
-      settings.daily_template.forEach(item => {
-        batchCosts.push({
-          user_id: userId,
-          date: dateStr,
-          category: item.name,
-          amount: Number(item.quantity) * Number(item.unit_price),
-          quantity: Number(item.quantity),
-          unit_price: Number(item.unit_price),
-          cost_type: '日常支出'
-        })
+    if (!existDates.has(dateStr)) {
+      set.daily_template.forEach(item => {
+        batch.push({ user_id: userId, date: dateStr, category: item.name, amount: Number(item.quantity) * Number(item.unit_price), quantity: Number(item.quantity), unit_price: Number(item.unit_price), cost_type: '日常支出' })
       })
     }
   }
-
-  // 4. 批量执行插入
-  if (batchCosts.length > 0) {
-    await supabase.from('cost').insert(batchCosts)
-  }
+  if (batch.length > 0) await supabase.from('cost').insert(batch)
 }
 
 const submitImport = async () => {
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
+    const sorted = [...parsedRecords.value].sort((a,b) => new Date(a.date) - new Date(b.date))
     
-    // 1. 录入奶款收入
-    const finalIncomeData = parsedRecords.value.map(r => ({
-      ...r,
-      user_id: user.id,
-      category: '驼奶销售'
-    }))
-    const { error: incError } = await supabase.from('income').insert(finalIncomeData)
-    if (incError) throw incError
+    // 1. 录入收入
+    const { error: incErr } = await supabase.from('income').insert(sorted.map(r => ({ ...r, user_id: user.id, category: '驼奶销售' })))
+    if (incErr) throw incErr
 
-    // 2. 🔴 智能补全成本
-    if (parsedRecords.value.length > 0) {
-      // 找到这批记录的日期范围
-      const dates = parsedRecords.value.map(r => r.date).sort()
-      await fillMissingCosts(user.id, dates[0], dates[dates.length - 1])
-    }
+    // 2. 补全对应天数的成本
+    await fillMissingCosts(user.id, sorted[0].date, sorted[sorted.length - 1].date)
 
-    ElMessage.success(`导入成功，已识别跨度 ${autoSpan.value} 天并自动对齐成本`)
-    visible.value = false
-    emit('success')
+    ElMessage.success(`导入成功，已补齐 ${autoSpan.value} 天的日常成本`)
+    visible.value = false; emit('success')
   } catch (e) {
     ElMessage.error('导入失败: ' + e.message)
   } finally {
     loading.value = false
   }
 }
-
-const removeRecord = (idx) => {
-  parsedRecords.value.splice(idx, 1)
-}
-
 defineExpose({ open })
 </script>

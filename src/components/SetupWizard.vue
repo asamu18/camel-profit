@@ -47,7 +47,7 @@
         
         <div v-for="(item, index) in form.template" :key="index" class="mb-3 bg-white p-3 rounded shadow-sm border border-orange-100">
           <div class="flex justify-between items-center mb-2 gap-2">
-            <el-input v-model="item.name" placeholder="请输入项目名称" size="small" class="font-bold" />
+            <el-input v-model="item.name" placeholder="项目名称" size="small" class="font-bold" />
             <el-button type="danger" link size="small" @click="removeItem(index)">删除</el-button>
           </div>
           
@@ -76,12 +76,12 @@
     <div class="py-4 bg-white border-t mt-2">
       <div class="flex justify-between text-sm mb-2 px-2">
         <span class="text-gray-500">预估日净利 (收入-支出):</span>
-        <span class="font-bold text-lg" :class="dailyProfit >= 0 ? 'text-green-600' : 'text-red-500'">
+        <span class="font-bold text-lg" :class="dailyProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
           ¥ {{ dailyProfit }}
         </span>
       </div>
-      <el-button type="primary" size="large" class="w-full font-bold" @click="saveSettings" :loading="loading">
-        保存并自动生成今日账单
+      <el-button type="primary" size="large" class="w-full font-bold h-12" @click="saveSettings" :loading="loading">
+        保存并开始记账
       </el-button>
     </div>
   </el-dialog>
@@ -96,7 +96,6 @@ const visible = ref(false)
 const loading = ref(false)
 const emit = defineEmits(['finish'])
 
-// 预设模板
 const defaultItems = [
   { name: '豆粕', quantity: 1, unit_price: 170 },
   { name: '葵花头', quantity: 1, unit_price: 50 },
@@ -112,15 +111,14 @@ const defaultItems = [
 const form = reactive({
   total_camels: 100,
   milking_camels: 20,
-  milk_frequency: 1, // 几天交一次
-  milk_quantity_per_time: 40, // 每次交多少
+  milk_frequency: 1,
+  milk_quantity_per_time: 40,
   milk_price: 30,
   template: JSON.parse(JSON.stringify(defaultItems))
 })
 
-// 计算日均奶收入
 const dailyMilkIncome = computed(() => {
-  if (!form.milk_frequency || form.milk_frequency === 0) return 0
+  if (!form.milk_frequency) return 0
   return ((form.milk_quantity_per_time / form.milk_frequency) * form.milk_price).toFixed(0)
 })
 
@@ -128,53 +126,28 @@ const totalDailyCost = computed(() => {
   return form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
 })
 
-const dailyProfit = computed(() => {
-  return (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0)
-})
+const dailyProfit = computed(() => (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
 
 const check = async () => {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    console.log("向导检测：用户未登录")
-    return
-  }
-
-  // 增加强制从服务端拉取，避免缓存
-  const { data, error } = await supabase
-    .from('settings')
-    .select('*')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  console.log("向导检测数据:", data)
-
-  // 🔴 逻辑优化：如果没有数据，或者 daily_template 字段是空的/空数组，就弹出
-  if (error || !data || !data.daily_template || data.daily_template.length === 0) {
-    console.log("向导检测：未检测到有效配置，开启引导...")
-    visible.value = true
-  }
+  if (!user) return
+  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
+  if (!data || !data.daily_template || data.daily_template.length === 0) visible.value = true
 }
 
-const addItem = () => {
-  form.template.push({ name: '', quantity: 1, unit_price: 0 })
-}
-
-const removeItem = (index) => {
-  form.template.splice(index, 1)
-}
+const addItem = () => form.template.push({ name: '', quantity: 1, unit_price: 0 })
+const removeItem = (index) => form.template.splice(index, 1)
 
 const saveSettings = async () => {
-  // 简单校验
-  if (form.template.some(item => !item.name || item.name.trim() === '')) {
-    return ElMessage.warning('请确保所有支出项都有名称')
-  }
+  if (form.template.some(item => !item.name.trim())) return ElMessage.warning('请确保所有支出项都有名称')
 
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
+    const today = new Date().toISOString().slice(0, 10)
     
     // 1. 保存设置
-    const settingsData = {
+    const { error: setErr } = await supabase.from('settings').upsert({
       user_id: user.id,
       total_camels: form.total_camels,
       milking_camels: form.milking_camels,
@@ -182,43 +155,37 @@ const saveSettings = async () => {
       milk_price: form.milk_price,
       milk_frequency: form.milk_frequency,
       milk_quantity_per_time: form.milk_quantity_per_time
+    }, { onConflict: 'user_id' })
+    if (setErr) throw setErr
+
+    // 2. 自动生成今日支出实账
+    const costRecords = form.template.map(item => ({
+      user_id: user.id, date: today, category: item.name,
+      quantity: item.quantity, unit_price: item.unit_price,
+      amount: item.quantity * item.unit_price, cost_type: '日常支出'
+    }))
+    await supabase.from('cost').insert(costRecords)
+
+    // 3. 自动生成今日收入实账 (如果设置了交奶)
+    if (form.milk_quantity_per_time > 0) {
+      await supabase.from('income').insert([{
+        user_id: user.id, date: today, category: '驼奶销售',
+        quantity: form.milk_quantity_per_time, unit_price: form.milk_price,
+        amount: form.milk_quantity_per_time * form.milk_price,
+        duration: form.milk_frequency
+      }])
     }
 
-    const { error: settingsError } = await supabase.from('settings').upsert(settingsData, { onConflict: 'user_id' })
-    if (settingsError) throw settingsError
-
-    // 2. 自动生成今日账单 (实账)
-    const today = new Date().toISOString().slice(0, 10)
-    // 检查今天是否已经有日常支出了，防止重复生成 (虽然初始化通常是新用户，但防守一下更好)
-    const { count } = await supabase.from('cost').select('*', { count: 'exact', head: true }).eq('date', today).eq('cost_type', '日常支出')
-    
-    if (count === 0) {
-      const records = form.template.map(item => ({
-        user_id: user.id,
-        date: today,
-        category: item.name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        amount: item.quantity * item.unit_price,
-        cost_type: '日常支出',
-        weight: 0 
-      }))
-      
-      const { error: costError } = await supabase.from('cost').insert(records)
-      if (costError) throw costError
-    }
-
-    ElMessage.success('初始化完成，今日账单已自动生成！')
+    ElMessage.success('初始化成功！已自动生成今日账单。')
     visible.value = false
     emit('finish')
-    
   } catch (err) {
-    console.error(err)
     ElMessage.error('保存失败: ' + err.message)
   } finally {
     loading.value = false
   }
 }
 
-defineExpose({ check })
+const openManual = () => visible.value = true
+defineExpose({ check, openManual })
 </script>

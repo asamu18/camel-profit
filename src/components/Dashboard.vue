@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <!-- 顶部设置入口 -->
     <div class="flex justify-between items-center px-1">
-      <div class="text-xs text-gray-400">版本 v1.2 - 智能同步版</div>
+      <div class="text-xs text-gray-400">版本 v1.2 - 还原模板/优化交互</div>
       <button @click="openSettings" class="text-[#8B5E3C] text-sm flex items-center gap-1">
         <el-icon><Setting /></el-icon> 经营设置/重置
       </button>
@@ -105,7 +105,7 @@
     <SettingsModal ref="settingsRef" @saved="syncData" />
     <ImportMilkModal ref="importModalRef" @success="syncData" />
 
-    <!-- 🔴 修改后的：每日模板编辑弹窗 (支持批量追溯) -->
+    <!-- 🔴 修改后的：每日模板编辑弹窗 (使用紧凑日期交互) -->
     <el-dialog v-model="showTemplate" title="每日固定成本管理" width="95%" style="max-width: 450px" center destroy-on-close>
       <div class="space-y-4">
         <!-- 列表部分 -->
@@ -123,24 +123,32 @@
           <el-button class="w-full border-dashed" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加物料</el-button>
         </div>
 
-        <!-- 🔴 核心新增：同步范围选择 -->
-        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mt-4">
+        <!-- 🔴 改进：卡片式同步日期范围选择 -->
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mt-2">
           <p class="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
             <el-icon><Calendar /></el-icon> 同步修改到历史日期
           </p>
-          <div class="flex flex-col gap-2">
-            <el-date-picker
-              v-model="batchSyncRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始"
-              end-placeholder="结束"
-              size="small"
-              value-format="YYYY-MM-DD"
-              class="w-full"
-            />
-            <p class="text-[10px] text-blue-400 italic">* 选择日期范围后，选定天数的日常支出将自动更新</p>
+          
+          <div class="flex items-center gap-2">
+            <!-- 开始日期 -->
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-10 overflow-hidden">
+                <span class="text-[8px] text-blue-400">开始</span>
+                <span class="text-[11px] font-bold text-blue-700">{{ syncStartDate || '点击选择' }}</span>
+                <input type="date" v-model="syncStartDate" class="absolute inset-0 opacity-0 w-full h-full" />
+            </div>
+            <div class="text-blue-300">-</div>
+            <!-- 结束日期 -->
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-10 overflow-hidden">
+                <span class="text-[8px] text-blue-400">结束</span>
+                <span class="text-[11px] font-bold text-blue-700">{{ syncEndDate || '点击选择' }}</span>
+                <input type="date" v-model="syncEndDate" class="absolute inset-0 opacity-0 w-full h-full" />
+            </div>
+            <!-- 重置日期按钮 -->
+            <button v-if="syncStartDate" @click="syncStartDate='';syncEndDate=''" class="text-gray-400 p-1">
+              <el-icon><RefreshRight /></el-icon>
+            </button>
           </div>
+          <p class="text-[9px] text-blue-400 italic mt-2">* 只有同时选择了开始和结束日期，历史账单才会同步更新。</p>
         </div>
 
         <el-button type="primary" class="w-full py-6 font-bold text-lg rounded-2xl" @click="saveTemplate" :loading="saving">
@@ -154,7 +162,7 @@
 <script setup>
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { supabase } from '../lib/supabase'
-import { CircleCheckFilled, Setting, ArrowRight, Delete, TrendCharts, EditPen, Calendar } from '@element-plus/icons-vue'
+import { CircleCheckFilled, Setting, ArrowRight, Delete, TrendCharts, EditPen, Calendar, RefreshRight } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import AddRecordModal from './AddRecordModal.vue'
 import SetupWizard from './SetupWizard.vue'
@@ -175,7 +183,11 @@ const cost = ref([])
 const settings = ref(null)
 const showTemplate = ref(false)
 const templateCopy = ref([])
-const batchSyncRange = ref([]) // 🔴 批量同步范围
+
+// 🔴 独立管理的同步日期
+const syncStartDate = ref('')
+const syncEndDate = ref('')
+
 const saving = ref(false)
 
 const toNum = (val) => Number(val) || 0
@@ -270,61 +282,52 @@ const syncData = async () => {
   }
 }
 
-// 🔴 核心重构：保存并支持批量同步历史
 const saveTemplate = async () => {
   saving.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
 
-    // 1. 更新全局模板设置
+    // 1. 更新全局设置
     await supabase.from('settings').update({ daily_template: templateCopy.value }).eq('user_id', user.id)
 
-    // 2. 确定需要同步的日期范围
-    let startDate = today
-    let endDate = today
+    // 2. 如果选择了历史区间，同步更新历史账单
+    if (syncStartDate.value && syncEndDate.value) {
+      await supabase.from('cost')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('cost_type', '日常支出')
+        .gte('date', syncStartDate.value)
+        .lte('date', syncEndDate.value)
 
-    if (batchSyncRange.value?.length === 2) {
-      startDate = batchSyncRange.value[0]
-      endDate = batchSyncRange.value[1]
-    }
-
-    // 3. 批量删除该范围内的旧日常支出
-    await supabase.from('cost')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('cost_type', '日常支出')
-      .gte('date', startDate)
-      .lte('date', endDate)
-
-    // 4. 循环插入新数据
-    const batchRecords = []
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().slice(0, 10)
-      templateCopy.value.forEach(item => {
-        batchRecords.push({
-          user_id: user.id,
-          date: dateStr,
-          category: item.name,
-          amount: toNum(item.quantity) * toNum(item.unit_price),
-          quantity: toNum(item.quantity),
-          unit_price: toNum(item.unit_price),
-          cost_type: '日常支出'
+      const batchRecords = []
+      const start = new Date(syncStartDate.value)
+      const end = new Date(syncEndDate.value)
+      
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10)
+        templateCopy.value.forEach(item => {
+          batchRecords.push({
+            user_id: user.id, date: dateStr, category: item.name,
+            amount: toNum(item.quantity) * toNum(item.unit_price),
+            quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
+          })
         })
-      })
+      }
+      if (batchRecords.length > 0) await supabase.from('cost').insert(batchRecords)
+    } else {
+      // 如果没选区间，只更新今天
+      await supabase.from('cost').delete().eq('user_id', user.id).eq('date', today).eq('cost_type', '日常支出')
+      const dailyRecords = templateCopy.value.map(item => ({
+        user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price),
+        quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
+      }))
+      if (dailyRecords.length > 0) await supabase.from('cost').insert(dailyRecords)
     }
 
-    if (batchRecords.length > 0) {
-      const { error } = await supabase.from('cost').insert(batchRecords)
-      if (error) throw error
-    }
-
-    ElMessage.success(batchSyncRange.value?.length ? '历史区间成本已同步更新' : '今日成本已更新')
+    ElMessage.success('模板及相关账单已同步更新')
     showTemplate.value = false
-    batchSyncRange.value = [] // 重置
+    syncStartDate.value = ''; syncEndDate.value = ''; // 重置
     syncData()
   } catch (e) {
     ElMessage.error('保存失败: ' + e.message)
@@ -343,6 +346,7 @@ const openMilk = () => {
   addModalRef.value.openWithScene('卖奶')
 }
 
+const openAIImport = () => { if (importModalRef.value) importModalRef.value.open() }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
 const openExtra = () => addModalRef.value.openWithScene('其他')
 const openSettings = () => settingsRef.value.open()
@@ -363,5 +367,13 @@ watch(() => route.query.action, async (val) => {
 
 <style scoped>
 .font-bold { font-family: system-ui, -apple-system, sans-serif; }
-:deep(.el-date-editor--daterange) { width: 100% !important; }
+
+/* 🔴 隐藏原生日期输入框的默认图标 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: auto; height: auto;
+  color: transparent;
+  background: transparent;
+}
 </style>
