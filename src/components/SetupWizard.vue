@@ -1,5 +1,15 @@
 <template>
-  <el-dialog v-model="visible" title="初始化您的驼场" width="95%" center :close-on-click-modal="false" :show-close="false" destroy-on-close>
+  <!-- 🔴 增加了 append-to-body 确保弹窗在最顶层 -->
+  <el-dialog 
+    v-model="visible" 
+    title="初始化您的驼场" 
+    width="95%" 
+    center 
+    :close-on-click-modal="false" 
+    :show-close="false" 
+    append-to-body
+    destroy-on-close
+  >
     
     <div class="h-[60vh] overflow-y-auto px-1">
       <!-- 第一步：规模与收入参数 -->
@@ -41,8 +51,8 @@
       <!-- 第二步：支出模板 -->
       <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
         <h3 class="font-bold text-orange-800 mb-3 text-sm flex justify-between items-center">
-          <span>💰 每日固定支出模板</span>
-          <span class="text-xs font-normal bg-orange-100 px-2 py-0.5 rounded text-orange-600">可自由修改名称</span>
+          <span>💰 每天喂草开支模板</span>
+          <span class="text-xs font-normal bg-orange-100 px-2 py-0.5 rounded text-orange-600">可改名</span>
         </h3>
         
         <div v-for="(item, index) in form.template" :key="index" class="mb-3 bg-white p-3 rounded shadow-sm border border-orange-100">
@@ -53,7 +63,7 @@
           
           <div class="flex gap-2">
              <div class="flex-1">
-               <div class="text-xs text-gray-400 mb-1">数量/重量</div>
+               <div class="text-xs text-gray-400 mb-1">数量</div>
                <el-input-number v-model="item.quantity" :min="0" size="small" style="width:100%" :controls="false" />
              </div>
              <div class="flex-1">
@@ -68,7 +78,7 @@
         </div>
         
         <el-button class="w-full mt-2 border-dashed bg-white" @click="addItem">
-          <span class="text-orange-500 font-bold">+ 添加其他支出项</span>
+          <span class="text-orange-500 font-bold">+ 添加其他开支项</span>
         </el-button>
       </div>
     </div>
@@ -128,11 +138,24 @@ const totalDailyCost = computed(() => {
 
 const dailyProfit = computed(() => (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
 
+// 🔴 核心修复：加强检测和弹出逻辑
 const check = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
-  if (!data || !data.daily_template || data.daily_template.length === 0) visible.value = true
+
+  const { data, error } = await supabase
+    .from('settings')
+    .select('daily_template')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (!data || !data.daily_template || data.daily_template.length === 0) {
+    console.log("SetupWizard: 确认数据为空，延迟弹出引导...");
+    // 🔴 延迟 300ms 弹出，避开页面初始渲染的抖动
+    setTimeout(() => {
+      visible.value = true
+    }, 300)
+  }
 }
 
 const addItem = () => form.template.push({ name: '', quantity: 1, unit_price: 0 })
@@ -158,7 +181,7 @@ const saveSettings = async () => {
     }, { onConflict: 'user_id' })
     if (setErr) throw setErr
 
-    // 2. 自动生成今日支出实账
+    // 2. 生成支出实账
     const costRecords = form.template.map(item => ({
       user_id: user.id, date: today, category: item.name,
       quantity: item.quantity, unit_price: item.unit_price,
@@ -166,7 +189,7 @@ const saveSettings = async () => {
     }))
     await supabase.from('cost').insert(costRecords)
 
-    // 3. 自动生成今日收入实账 (如果设置了交奶)
+    // 3. 生成收入实账
     if (form.milk_quantity_per_time > 0) {
       await supabase.from('income').insert([{
         user_id: user.id, date: today, category: '驼奶销售',
@@ -186,6 +209,6 @@ const saveSettings = async () => {
   }
 }
 
-const openManual = () => visible.value = true
+const openManual = () => { visible.value = true }
 defineExpose({ check, openManual })
 </script>

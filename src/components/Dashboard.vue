@@ -2,158 +2,142 @@
   <div class="space-y-6">
     <!-- 顶部设置入口 -->
     <div class="flex justify-between items-center px-1">
-      <div class="text-xs text-gray-400">版本 v1.2 - 还原模板/优化交互</div>
-      <button @click="openSettings" class="text-[#8B5E3C] text-sm flex items-center gap-1">
+      <div class="text-xs text-gray-400">版本 v1.5 - 自动补全成本版</div>
+      <button @click="openSettings" class="text-[#8B5E3C] text-sm flex items-center gap-1 font-bold">
         <el-icon><Setting /></el-icon> 经营设置/重置
       </button>
     </div>
 
-    <!-- 1. 今日预计净利润卡片 -->
-    <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
-      <span class="text-gray-400 text-sm">今日预计净利润</span>
+    <!-- 1. 核心：今天到手净赚 -->
+    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-orange-100 flex flex-col justify-between h-44 relative overflow-hidden">
+      <span class="text-gray-500 text-base font-bold">今天到手净赚</span>
       <div :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-        <span class="text-3xl font-bold">¥ {{ formatNum(todayProfit) }}</span>
+        <span class="text-5xl font-black">¥ {{ formatNum(todayProfit) }}</span>
       </div>
       <div class="flex justify-between items-center">
-        <p class="text-[10px] text-gray-300 italic">
+        <p class="text-xs text-gray-400 font-medium italic">
           {{ hasTodayMilk ? `* 已按 ${todayMilkDuration} 天产量平摊` : '* 基于模板预估' }}
         </p>
         <div class="opacity-10">
-          <el-icon :size="24" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'"><TrendCharts /></el-icon>
+          <el-icon :size="40" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'"><TrendCharts /></el-icon>
         </div>
       </div>
     </div>
 
-    <!-- 数据看板 -->
-    <div class="grid grid-cols-2 gap-4">
+    <!-- 动态数据看板 -->
+    <div class="grid gap-4" :class="hasTodayMilk ? 'grid-cols-2' : 'grid-cols-1'">
       <!-- 2. 今日交奶实收 -->
-      <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
+      <div v-if="hasTodayMilk" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden animate-in fade-in zoom-in duration-300">
         <div class="h-5 flex items-center">
-          <span class="text-gray-400 text-sm">今日交奶实收</span>
+          <span class="text-gray-400 text-sm font-bold">今日交奶实收</span>
         </div>
         <div>
-          <span class="text-2xl font-bold" :class="hasTodayMilk ? 'text-emerald-500' : 'text-gray-300'">
+          <span class="text-2xl font-black text-emerald-500">
             ¥ {{ formatNum(todayIncome) }}
           </span>
           <div class="h-4 mt-1">
-            <p v-if="!hasTodayMilk" class="text-[10px] text-orange-400">
-              预计: ¥ {{ formatNum(dailyPotentialIncome) }}
-            </p>
-            <p v-else class="text-[10px] opacity-0">占位</p>
+            <p class="text-[10px] opacity-0">占位</p>
           </div>
         </div>
-        <div v-if="hasTodayMilk" class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12">
+        <div class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12">
           <el-icon :size="60"><CircleCheckFilled /></el-icon>
         </div>
       </div>
 
-      <!-- 3. 每日固定成本卡片 -->
-      <div @click="showTemplate = true" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 active:bg-gray-50 transition-colors">
+      <!-- 3. 每天喂草开支 -->
+      <div @click="showTemplate = true" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 active:bg-gray-50 transition-all">
         <div class="h-5 flex justify-between items-center">
-          <span class="text-gray-400 text-sm">每日固定成本</span>
+          <span class="text-gray-400 text-sm font-bold">每天喂草开支</span>
           <el-icon class="text-gray-300"><ArrowRight /></el-icon>
         </div>
         <div>
-          <span class="text-2xl font-bold text-rose-500">¥ {{ formatNum(dailyFixedCost) }}</span>
+          <span class="text-2xl font-black text-rose-500">¥ {{ formatNum(dailyFixedCost) }}</span>
           <div class="h-4 mt-1">
-            <p class="text-[10px] text-blue-400">点击修改明细</p>
+            <p class="text-[10px] text-blue-400 font-bold">点这里改明细</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 4. 本月/年利润预估卡片 -->
+    <!-- 本月利润卡片 -->
     <div class="bg-[#8B5E3C] p-6 rounded-[2.5rem] shadow-xl text-white">
       <div class="flex justify-between items-start mb-4">
         <div>
-          <h3 class="text-lg opacity-80">本月利润预估</h3>
-          <p class="text-3xl font-bold mt-1">¥ {{ formatNum(monthlyProfit) }}</p>
+          <h3 class="text-lg opacity-80 font-bold">本月利润预估</h3>
+          <p class="text-4xl font-black mt-1">¥ {{ formatNum(monthlyProfit) }}</p>
         </div>
         <div class="text-right">
-          <span class="text-[10px] bg-white/10 px-2 py-0.5 rounded-full block mb-1">已计入实际收支</span>
-          <span class="text-[10px] text-white/50">月额外支出: ¥ {{ formatNum(monthlyExtra) }}</span>
+          <span class="text-[10px] bg-white/20 px-2 py-0.5 rounded-full block mb-1">实账+预估</span>
+          <span class="text-[10px] text-white/50 font-bold">杂费: ¥{{ formatNum(monthlyExtra) }}</span>
         </div>
       </div>
       <div class="pt-4 border-t border-white/10 flex items-center justify-between">
         <div>
-          <p class="text-[10px] opacity-70">预计年利润 (当前规模)</p>
-          <p class="text-lg font-bold">¥ {{ formatNum(monthlyProfit * 12) }}</p>
+          <p class="text-[10px] opacity-70 font-bold">预计一年能赚</p>
+          <p class="text-xl font-black">¥ {{ formatNum(monthlyProfit * 12) }}</p>
         </div>
         <div class="text-right"><p class="text-[10px] opacity-50 italic">* 基于平摊逻辑计算</p></div>
       </div>
     </div>
 
     <!-- 快捷操作按钮 -->
-    <div class="space-y-3">
-      <div class="grid grid-cols-2 gap-4">
-        <button @click="openMilk" :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" class="py-5 rounded-3xl font-bold text-lg shadow-md text-white flex flex-col items-center">
-          <span>{{ hasTodayMilk ? '✅ 今日已交' : '🥛 刚交了奶' }}</span>
-        </button>
-        <button @click="openFeed" class="bg-emerald-600 text-white py-5 rounded-3xl font-bold text-lg shadow-md flex flex-col items-center">
-          <span>🌾 进饲料</span>
-        </button>
-      </div>
-      <button @click="openExtra" class="w-full bg-[#C4A484] text-white py-4 rounded-3xl font-bold text-lg shadow-md flex items-center justify-center gap-2">
-        <el-icon><EditPen /></el-icon>
-        <span>记一笔额外开销 (支出)</span>
+    <div class="space-y-4">
+      <button @click="openMilk" :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" class="w-full py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
+        <span class="text-3xl">🥛</span>
+        <span>{{ hasTodayMilk ? '今日账已记完' : '刚才交了奶' }}</span>
+      </button>
+      <button @click="openFeed" class="w-full bg-[#059669] py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
+        <span class="text-3xl">🌾</span>
+        <span>进饲料 / 买草</span>
+      </button>
+      <button @click="openExtra" class="w-full bg-[#C4A484] py-5 rounded-3xl font-black text-lg shadow-md text-white flex items-center justify-center gap-2 active:scale-95 transition-all">
+        <el-icon :size="20"><EditPen /></el-icon>
+        <span>记一笔杂费 (修车、买药等)</span>
       </button>
     </div>
 
-    <!-- 弹窗组件 -->
+    <!-- 弹窗 -->
     <AddRecordModal ref="addModalRef" @success="syncData" />
     <SetupWizard ref="wizardRef" @finish="syncData" />
     <SettingsModal ref="settingsRef" @saved="syncData" />
     <ImportMilkModal ref="importModalRef" @success="syncData" />
 
-    <!-- 🔴 修改后的：每日模板编辑弹窗 (使用紧凑日期交互) -->
-    <el-dialog v-model="showTemplate" title="每日固定成本管理" width="95%" style="max-width: 450px" center destroy-on-close>
+    <el-dialog v-model="showTemplate" title="每天喂草开支管理" width="95%" style="max-width: 450px" center destroy-on-close>
       <div class="space-y-4">
-        <!-- 列表部分 -->
         <div class="max-h-[40vh] overflow-y-auto space-y-3 pr-1">
-          <div v-for="(item, idx) in templateCopy" :key="idx" class="bg-gray-50 p-3 rounded-xl border border-gray-100">
-            <div class="flex justify-between items-center mb-2">
-              <el-input v-model="item.name" size="small" class="w-2/3 font-bold" />
-              <el-button type="danger" link @click="templateCopy.splice(idx, 1)"><el-icon><Delete /></el-icon></el-button>
+          <div v-for="(item, idx) in templateCopy" :key="idx" class="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <div class="flex justify-between items-center mb-3">
+              <el-input v-model="item.name" size="large" class="w-2/3 font-black" />
+              <el-button type="danger" link @click="templateCopy.splice(idx, 1)"><el-icon :size="20"><Delete /></el-icon></el-button>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <el-input-number v-model="item.quantity" :min="0" size="small" class="w-full" :controls="false" placeholder="数量" />
-              <el-input-number v-model="item.unit_price" :min="0" size="small" class="w-full" :controls="false" placeholder="单价" />
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1">
+                <span class="text-[10px] text-gray-400 ml-1">数量</span>
+                <el-input-number v-model="item.quantity" :min="0" size="large" class="w-full" :controls="false" />
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-[10px] text-gray-400 ml-1">单价</span>
+                <el-input-number v-model="item.unit_price" :min="0" size="large" class="w-full" :controls="false" />
+              </div>
             </div>
           </div>
-          <el-button class="w-full border-dashed" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加物料</el-button>
+          <el-button class="w-full py-4 border-dashed rounded-xl font-bold" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加开支项</el-button>
         </div>
-
-        <!-- 🔴 改进：卡片式同步日期范围选择 -->
         <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mt-2">
-          <p class="text-xs font-bold text-blue-700 mb-2 flex items-center gap-1">
-            <el-icon><Calendar /></el-icon> 同步修改到历史日期
-          </p>
-          
+          <p class="text-sm font-bold text-blue-700 mb-2 flex items-center gap-1"><el-icon><Calendar /></el-icon> 同时也修改以前的账单</p>
           <div class="flex items-center gap-2">
-            <!-- 开始日期 -->
-            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-10 overflow-hidden">
-                <span class="text-[8px] text-blue-400">开始</span>
-                <span class="text-[11px] font-bold text-blue-700">{{ syncStartDate || '点击选择' }}</span>
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12">
+                <span class="text-[8px] text-blue-400">从哪天起</span><span class="text-xs font-black text-blue-700">{{ syncStartDate || '选日期' }}</span>
                 <input type="date" v-model="syncStartDate" class="absolute inset-0 opacity-0 w-full h-full" />
             </div>
             <div class="text-blue-300">-</div>
-            <!-- 结束日期 -->
-            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-10 overflow-hidden">
-                <span class="text-[8px] text-blue-400">结束</span>
-                <span class="text-[11px] font-bold text-blue-700">{{ syncEndDate || '点击选择' }}</span>
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12">
+                <span class="text-[8px] text-blue-400">到哪天止</span><span class="text-xs font-black text-blue-700">{{ syncEndDate || '选日期' }}</span>
                 <input type="date" v-model="syncEndDate" class="absolute inset-0 opacity-0 w-full h-full" />
             </div>
-            <!-- 重置日期按钮 -->
-            <button v-if="syncStartDate" @click="syncStartDate='';syncEndDate=''" class="text-gray-400 p-1">
-              <el-icon><RefreshRight /></el-icon>
-            </button>
           </div>
-          <p class="text-[9px] text-blue-400 italic mt-2">* 只有同时选择了开始和结束日期，历史账单才会同步更新。</p>
         </div>
-
-        <el-button type="primary" class="w-full py-6 font-bold text-lg rounded-2xl" @click="saveTemplate" :loading="saving">
-          确认修改并保存
-        </el-button>
+        <el-button type="primary" class="w-full py-6 font-black text-xl rounded-3xl shadow-lg" @click="saveTemplate" :loading="saving">确认保存修改</el-button>
       </div>
     </el-dialog>
   </div>
@@ -177,28 +161,22 @@ const importModalRef = ref(null)
 const route = useRoute()
 const router = useRouter()
 
-// 状态
 const income = ref([])
 const cost = ref([])
 const settings = ref(null)
 const showTemplate = ref(false)
 const templateCopy = ref([])
-
-// 🔴 独立管理的同步日期
 const syncStartDate = ref('')
 const syncEndDate = ref('')
-
 const saving = ref(false)
 
 const toNum = (val) => Number(val) || 0
-
 const formatNum = (n) => {
   if (n === null || n === undefined) return '0'
   const rounded = Math.round(n)
   return (rounded < 0 ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
 }
 
-// --- 计算属性 ---
 const dailyPotentialIncome = computed(() => {
   if (!settings.value) return 0
   return (toNum(settings.value.milk_quantity_per_time) * toNum(settings.value.milk_price)) / toNum(settings.value.milk_frequency || 1)
@@ -265,21 +243,84 @@ const monthlyExtra = computed(() => {
   }).reduce((s, i) => s + toNum(i.amount), 0)
 })
 
-// --- 方法 ---
+// 🔴 核心修复：自动补齐漏掉的每日成本
+const autoFillMissingCosts = async (userId, dailyTemplate) => {
+  if (!dailyTemplate || dailyTemplate.length === 0) return
+
+  // 1. 获取数据库中最近一笔“日常支出”的日期
+  const { data: lastCost } = await supabase
+    .from('cost')
+    .select('date')
+    .eq('user_id', userId)
+    .eq('cost_type', '日常支出')
+    .order('date', { ascending: false })
+    .limit(1)
+
+  const todayStr = new Date().toISOString().slice(0, 10)
+  let startDate = new Date()
+
+  if (lastCost && lastCost.length > 0) {
+    startDate = new Date(lastCost[0].date)
+    startDate.setDate(startDate.getDate() + 1) // 从最后一笔的后一天开始补
+  } else {
+    // 如果从来没记过，只记今天
+    startDate = new Date(todayStr)
+  }
+
+  const today = new Date(todayStr)
+  const batchRecords = []
+
+  // 2. 循环补齐从 startDate 到 today 的所有日期
+  for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().slice(0, 10)
+    dailyTemplate.forEach(item => {
+      batchRecords.push({
+        user_id: userId,
+        date: dateStr,
+        category: item.name,
+        amount: toNum(item.quantity) * toNum(item.unit_price),
+        quantity: toNum(item.quantity),
+        unit_price: toNum(item.unit_price),
+        cost_type: '日常支出'
+      })
+    })
+  }
+
+  if (batchRecords.length > 0) {
+    console.log(`正在自动补齐 ${batchRecords.length / dailyTemplate.length} 天的成本记录...`)
+    await supabase.from('cost').insert(batchRecords)
+    return true
+  }
+  return false
+}
+
 const syncData = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
+  
+  // 🔴 增加读取 Limit 到 500，防止数据被截断
   const [incRes, costRes, setRes] = await Promise.all([
-    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
-    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
+    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(200),
+    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(500),
     supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
   ])
-  if (incRes.data) income.value = incRes.data
-  if (costRes.data) cost.value = costRes.data
+
   if (setRes.data) {
     settings.value = setRes.data
     templateCopy.value = JSON.parse(JSON.stringify(setRes.data.daily_template || []))
+    
+    // 🔴 每次同步数据时，顺便检查并补齐缺失的成本账单
+    const filled = await autoFillMissingCosts(user.id, setRes.data.daily_template)
+    if (filled) {
+      // 如果补齐了数据，重新拉取一次 cost 列表
+      const { data: newCost } = await supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(500)
+      cost.value = newCost || []
+    } else {
+      cost.value = costRes.data || []
+    }
   }
+
+  if (incRes.data) income.value = incRes.data
 }
 
 const saveTemplate = async () => {
@@ -287,69 +328,38 @@ const saveTemplate = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
-
-    // 1. 更新全局设置
     await supabase.from('settings').update({ daily_template: templateCopy.value }).eq('user_id', user.id)
-
-    // 2. 如果选择了历史区间，同步更新历史账单
     if (syncStartDate.value && syncEndDate.value) {
-      await supabase.from('cost')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('cost_type', '日常支出')
-        .gte('date', syncStartDate.value)
-        .lte('date', syncEndDate.value)
-
+      await supabase.from('cost').delete().eq('user_id', user.id).eq('cost_type', '日常支出').gte('date', syncStartDate.value).lte('date', syncEndDate.value)
       const batchRecords = []
-      const start = new Date(syncStartDate.value)
-      const end = new Date(syncEndDate.value)
-      
+      const start = new Date(syncStartDate.value); const end = new Date(syncEndDate.value)
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().slice(0, 10)
-        templateCopy.value.forEach(item => {
-          batchRecords.push({
-            user_id: user.id, date: dateStr, category: item.name,
-            amount: toNum(item.quantity) * toNum(item.unit_price),
-            quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
-          })
-        })
+        templateCopy.value.forEach(item => { batchRecords.push({ user_id: user.id, date: dateStr, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }) })
       }
       if (batchRecords.length > 0) await supabase.from('cost').insert(batchRecords)
     } else {
-      // 如果没选区间，只更新今天
       await supabase.from('cost').delete().eq('user_id', user.id).eq('date', today).eq('cost_type', '日常支出')
-      const dailyRecords = templateCopy.value.map(item => ({
-        user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price),
-        quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出'
-      }))
+      const dailyRecords = templateCopy.value.map(item => ({ user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }))
       if (dailyRecords.length > 0) await supabase.from('cost').insert(dailyRecords)
     }
-
-    ElMessage.success('模板及相关账单已同步更新')
-    showTemplate.value = false
-    syncStartDate.value = ''; syncEndDate.value = ''; // 重置
-    syncData()
-  } catch (e) {
-    ElMessage.error('保存失败: ' + e.message)
-  } finally {
-    saving.value = false
-  }
+    ElMessage.success('保存成功')
+    showTemplate.value = false; syncStartDate.value = ''; syncEndDate.value = ''; syncData()
+  } catch (e) { ElMessage.error('保存失败') } finally { saving.value = false }
 }
 
 const openMilk = () => {
   if (!addModalRef.value) return
   if (hasTodayMilk.value) {
-    ElMessageBox.confirm('今日已记账，如需修改请前往历史页面。', '提示', { confirmButtonText: '去历史', cancelButtonText: '取消' })
-      .then(() => router.push('/history'))
+    ElMessageBox.confirm('今天交奶已经记过了，要去历史里改吗？', '今日已交', { confirmButtonText: '去历史修改', cancelButtonText: '不用了' }).then(() => router.push('/history'))
     return
   }
   addModalRef.value.openWithScene('卖奶')
 }
-
-const openAIImport = () => { if (importModalRef.value) importModalRef.value.open() }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
 const openExtra = () => addModalRef.value.openWithScene('其他')
 const openSettings = () => settingsRef.value.open()
+const openAIImport = async () => { if (!importModalRef.value) await nextTick(); importModalRef.value.open() }
 
 onMounted(async () => {
   await syncData()
@@ -357,23 +367,11 @@ onMounted(async () => {
 })
 
 watch(() => route.query.action, async (val) => {
-  if (val === 'bulkImport') {
-    if (!importModalRef.value) await nextTick()
-    importModalRef.value.open()
-  }
+  if (val === 'bulkImport') { openAIImport() }
   setTimeout(() => { router.replace({ path: '/', query: {} }) }, 500)
 }, { immediate: true })
 </script>
 
 <style scoped>
-.font-bold { font-family: system-ui, -apple-system, sans-serif; }
-
-/* 🔴 隐藏原生日期输入框的默认图标 */
-input[type="date"]::-webkit-calendar-picker-indicator {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: auto; height: auto;
-  color: transparent;
-  background: transparent;
-}
+.font-black { font-family: system-ui, -apple-system, sans-serif; }
 </style>

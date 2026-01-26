@@ -128,9 +128,16 @@ const handleResetAll = () => {
   ).then(async () => {
     loading.value = true
     try {
+      // 1. 调用 API 删除所有数据
       await dataService.clearAllUserData()
+      
+      // 2. 清理所有本地缓存
+      localStorage.clear()
+      
       ElMessage.success('数据已全部清除')
-      window.location.reload()
+      
+      // 3. 🔴 关键点：强制重定向到根路径并刷新
+      window.location.href = window.location.origin
     } catch (e) {
       ElMessage.error('清除失败')
     } finally {
