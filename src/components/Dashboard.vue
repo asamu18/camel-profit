@@ -206,7 +206,7 @@ const uiSteps = [
   { targetId: 'guide-settings', title: '2. 经营设置', content: '点这里可以打开设置弹窗，详细配置你的驼群数量、交奶价格以及每天的固定开支。', onEnter: () => { openSettings() } }, 
   { targetId: 'setting-camels', title: '2.1 驼群规模', content: '输入你家现在有多少峰骆驼，有多少峰正在产奶。' },
   { targetId: 'setting-milk', title: '2.2 交奶设置', content: '设置你平常几天交一次奶，一次大概多少公斤，多少钱一公斤。用于算预估收入。' },
-  { targetId: 'setting-daily', title: '2.3 固定开支', content: '这里可以展开，把你每天雷打不动要花的钱（如雇人、草料费）一项项记进去。', onEnter: () => { if(settingsRef.value) settingsRef.value.showDailyCosts = true } },
+  { targetId: 'setting-daily', title: '2.3 固定开支', content: '这里可以展开，把你每天雷打不动要花的钱（如雇人、草料费）一项项记进去。' },
   { targetId: 'open-milk-btn', title: '3. 每天交奶点这里', content: '重要！每天交完奶，点这个大灰色按钮（平常没交奶时是橙色的）。不要去点底部的那个小按钮！', onEnter: () => { settingsRef.value.visible = false } },
   { targetId: 'nav-import', title: '4. 只有批量导入才点它', content: '底部的这个按钮是用来一次性批量导入你的历史交奶记录的。平时记账不要用它。' },
   { targetId: 'nav-history', title: '5. 查旧账点这里', content: '想看上个月赚了多少？点这里进入历史账本。' }

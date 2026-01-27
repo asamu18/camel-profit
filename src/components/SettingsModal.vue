@@ -110,6 +110,7 @@ const form = reactive({
 })
 
 const open = async () => {
+  showDailyCosts.value = false // 每次打开都重置为收起
   visible.value = true
   const { data: { user } } = await supabase.auth.getUser()
   const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()

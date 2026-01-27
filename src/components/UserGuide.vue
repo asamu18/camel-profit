@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div v-if="active" class="fixed inset-0 z-[9999] pointer-events-none">
+    <div v-if="active" class="fixed inset-0 z-[2147483647] pointer-events-none">
       <!-- 黑色遮罩底层 -->
       <div class="absolute inset-0 bg-transparent pointer-events-auto" @click.stop></div>
 
@@ -57,76 +57,79 @@ const updateHighlight = async () => {
   
   const step = currentStepData.value
   const targetIds = Array.isArray(step.targetId) ? step.targetId : [step.targetId]
-  const els = targetIds.map(id => document.getElementById(id)).filter(Boolean)
   
-  if (els.length > 0) {
-    // 滚动到第一个元素
-    els[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
-  }
-
+  // 延迟执行，确保弹窗等动画完成且元素已渲染
   setTimeout(() => {
+    const els = targetIds.map(id => document.getElementById(id)).filter(Boolean)
+    
     if (els.length > 0) {
-      // 计算所有元素的并集区域
-      let minTop = Infinity, minLeft = Infinity, maxBottom = -Infinity, maxRight = -Infinity
+      // 滚动到第一个元素
+      els[0].scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
       
-      els.forEach(el => {
-        const r = el.getBoundingClientRect()
-        if (r.top < minTop) minTop = r.top
-        if (r.left < minLeft) minLeft = r.left
-        if (r.bottom > maxBottom) maxBottom = r.bottom
-        if (r.right > maxRight) maxRight = r.right
-      })
-      
-      const width = maxRight - minLeft
-      const height = maxBottom - minTop
-      const rect = { top: minTop, left: minLeft, width, height, bottom: maxBottom }
+      // 再次延迟以等待滚动完成，然后计算位置
+      setTimeout(() => {
+        // 计算所有元素的并集区域
+        let minTop = Infinity, minLeft = Infinity, maxBottom = -Infinity, maxRight = -Infinity
+        
+        els.forEach(el => {
+          const r = el.getBoundingClientRect()
+          if (r.top < minTop) minTop = r.top
+          if (r.left < minLeft) minLeft = r.left
+          if (r.bottom > maxBottom) maxBottom = r.bottom
+          if (r.right > maxRight) maxRight = r.right
+        })
+        
+        const width = maxRight - minLeft
+        const height = maxBottom - minTop
+        const rect = { top: minTop, left: minLeft, width, height, bottom: maxBottom }
 
-      const padding = 5
-      const viewportHeight = window.innerHeight
-      
-      // 1. 更新高亮框位置
-      // 限制高亮框最大高度不超过视口高度，避免大元素导致高亮框过大
-      const maxH = viewportHeight - 40
-      const finalHeight = Math.min(rect.height + padding * 2, maxH)
-      // 如果元素高度超过视口，调整 top 确保高亮框居中或在视口内
-      let finalTop = rect.top - padding
-      if (rect.height > maxH) {
-        // 对于超大元素，让高亮框在视口居中
-        finalTop = (viewportHeight - finalHeight) / 2
-      }
-
-      highlightStyle.value = {
-        top: `${finalTop}px`,
-        left: `${rect.left - padding}px`,
-        width: `${rect.width + padding * 2}px`,
-        height: `${finalHeight}px`
-      }
-      
-      // 2. 优化描述卡片位置计算（解决位置不精准问题）
-      // 如果目标元素过高（超过屏幕 60%），强制卡片显示在底部，避免计算出的位置跑出屏幕
-      if (rect.height > viewportHeight * 0.6) {
-        cardPosition.value = { 
-          bottom: '40px', 
-          top: 'auto' 
+        const padding = 5
+        const viewportHeight = window.innerHeight
+        
+        // 1. 更新高亮框位置
+        // 限制高亮框最大高度不超过视口高度，避免大元素导致高亮框过大
+        const maxH = viewportHeight - 40
+        const finalHeight = Math.min(rect.height + padding * 2, maxH)
+        // 如果元素高度超过视口，调整 top 确保高亮框居中或在视口内
+        let finalTop = rect.top - padding
+        if (rect.height > maxH) {
+          // 对于超大元素，让高亮框在视口居中
+          finalTop = (viewportHeight - finalHeight) / 2
         }
-      } else {
-        // 判断目标在屏幕的上半部还是下半部，并留出至少 20px 的安全间距
-        if (rect.top > viewportHeight / 2) {
-          // 目标在下半部分，卡片显示在上方
+
+        highlightStyle.value = {
+          top: `${finalTop}px`,
+          left: `${rect.left - padding}px`,
+          width: `${rect.width + padding * 2}px`,
+          height: `${finalHeight}px`
+        }
+        
+        // 2. 优化描述卡片位置计算（解决位置不精准问题）
+        // 如果目标元素过高（超过屏幕 60%），强制卡片显示在底部，避免计算出的位置跑出屏幕
+        if (rect.height > viewportHeight * 0.6) {
           cardPosition.value = { 
-            bottom: `${viewportHeight - rect.top + 20}px`,
-            top: 'auto'
+            bottom: '40px', 
+            top: 'auto' 
           }
         } else {
-          // 目标在上半部分，卡片显示在下方
-          cardPosition.value = { 
-            top: `${rect.bottom + 20}px`,
-            bottom: 'auto'
+          // 判断目标在屏幕的上半部还是下半部，并留出至少 20px 的安全间距
+          if (rect.top > viewportHeight / 2) {
+            // 目标在下半部分，卡片显示在上方
+            cardPosition.value = { 
+              bottom: `${viewportHeight - rect.top + 20}px`,
+              top: 'auto'
+            }
+          } else {
+            // 目标在上半部分，卡片显示在下方
+            cardPosition.value = { 
+              top: `${rect.bottom + 20}px`,
+              bottom: 'auto'
+            }
           }
         }
-      }
+      }, 300)
     }
-  }, 350)
+  }, 300)
 }
 
 const start = async () => {

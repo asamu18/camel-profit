@@ -2,6 +2,11 @@
 <html lang="en">
   <head>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // 禁用系统深色模式自动适配，强制使用浅色（除非手动加 dark 类）
+      }
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <!-- 🔴 修改点：增加了 viewport-fit=cover -->
