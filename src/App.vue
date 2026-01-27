@@ -31,17 +31,15 @@
           <span class="text-[10px] font-medium">首页</span>
         </router-link>
 
-        <!-- 中间加号按钮：触发批量导入 -->
-        <div class="relative -mt-10">
-          <button 
-            @click="triggerBulkImport" 
-            class="p-4 rounded-full shadow-xl bg-[#F59E0B] text-white border-4 border-white active:scale-95 transition-transform"
-          >
-            <el-icon :size="24"><Plus /></el-icon>
+        <!-- 🔴 弱化后的加号按钮：改名为“导入”，颜色变淡，图标变更为文件图标 -->
+        <div class="relative -mt-6">
+          <button id="nav-import" @click="triggerBulkImport" class="p-3 rounded-2xl shadow-md bg-gray-100 text-gray-500 border border-gray-200 active:scale-95 transition-all">
+            <el-icon :size="20"><DocumentAdd /></el-icon>
+            <p class="text-[8px] mt-0.5 font-bold">导入</p>
           </button>
         </div>
 
-        <router-link to="/history" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
+        <router-link id="nav-history" to="/history" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
           <el-icon :size="20"><Clock /></el-icon>
           <span class="text-[10px] font-medium">历史</span>
         </router-link>
@@ -54,7 +52,7 @@
 import { ref, onMounted } from 'vue'
 import { supabase } from './lib/supabase'
 import Login from './components/Login.vue'
-import { Money, Plus, Clock } from '@element-plus/icons-vue'
+import { Money, Plus, Clock, DocumentAdd } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
 const session = ref(null)

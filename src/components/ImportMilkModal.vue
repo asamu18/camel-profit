@@ -5,6 +5,7 @@
       <div class="bg-blue-50 p-3 rounded-lg text-[11px] text-blue-700 leading-relaxed border border-blue-100">
         <p class="font-bold mb-1 text-xs">🚀 极速导入并同步成本</p>
         <p>系统将自动识别日期跨度并补齐对应日期的成本，确保利润计算准确。</p>
+        <p class="mt-1 text-blue-500 font-bold">支持格式：日期 + 数量(公斤/kg) + 单价(元)，例如：<br>1月20日 50公斤 30元<br>2024-01-20 50kg 30</p>
       </div>
 
       <el-input

@@ -39,8 +39,16 @@
         <el-form-item label="进货日期">
            <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large"/>
         </el-form-item>
-        <el-form-item label="饲料名字 (点开选)">
-           <el-select v-model="form.category" filterable allow-create placeholder="请选择" size="large" class="!w-full">
+        <el-form-item label="饲料名字 (点开选或直接输)">
+           <el-select 
+             v-model="form.category" 
+             filterable 
+             allow-create 
+             default-first-option
+             placeholder="输入或选择饲料" 
+             size="large" 
+             class="!w-full"
+           >
              <el-option v-for="item in feedOptions" :key="item.name" :label="item.name" :value="item.name" />
            </el-select>
         </el-form-item>
@@ -156,7 +164,7 @@ const emit = defineEmits(['success'])
 const userTemplate = ref([])
 
 const form = reactive({
-  date: '', quantity: 1, unit_price: 0, amount: 0, category: '', type: 'income', duration: 1, weight: 0,
+  date: '', quantity: 1, unit_price: 0, amount: 0, category: '', type: 'cost', duration: 1, weight: 0,
   bags: 0, kg_per_bag: 40, price_per_bag: 0
 })
 
@@ -207,8 +215,19 @@ const submit = async () => {
       await dataService.addIncome({ date: form.date, category: '驼奶销售', quantity: form.quantity, unit_price: form.unit_price, amount: form.quantity * form.unit_price, duration: form.duration })
     } 
     else if (scene.value === '买饲料') {
-      await dataService.addCost({ date: form.date, category: form.category || '饲料', amount: form.amount, unit_price: form.unit_price, weight: form.weight, cost_type: '库存进货' })
-      if (form.weight > 0 && form.category) await dataService.incrementInventory({ category: form.category, weight: form.weight, unit_price: form.unit_price })
+      const feedName = form.category || '饲料'
+      await dataService.addCost({ date: form.date, category: feedName, amount: form.amount, unit_price: form.unit_price, weight: form.weight, cost_type: '库存进货' })
+      if (form.weight > 0) await dataService.incrementInventory({ category: feedName, weight: form.weight, unit_price: form.unit_price })
+      
+      // 🔴 智能保存新饲料到每日模板（如果不存在）
+      const { data: currentSet } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).maybeSingle()
+      if (currentSet) {
+        const tpl = currentSet.daily_template || []
+        if (!tpl.some(t => t.name === feedName)) {
+          tpl.push({ name: feedName, quantity: 0, unit_price: 0 })
+          await supabase.from('settings').update({ daily_template: tpl }).eq('user_id', user.id)
+        }
+      }
     }
     else {
       const data = { date: form.date, category: form.category, amount: form.amount }

@@ -2,6 +2,8 @@
   <div class="space-y-4 pb-24">
     <!-- 🔴 关键修复：把弹窗挪到最顶层，不要被 v-loading 所在的 div 包裹 -->
     <AddRecordModal ref="addModalRef" @success="fetchData" />
+     <!-- 🔴 历史页面的指引组件 -->
+    <UserGuide ref="historyGuideRef" :steps="historySteps" />
 
     <!-- 顶部导航与筛选 -->
     <div class="sticky top-0 bg-[#FDFBF7] z-30 py-2 space-y-3 shadow-sm px-1">
@@ -11,7 +13,7 @@
       </div>
 
       <!-- 分段切换器 -->
-      <div class="px-2">
+      <div class="px-2" id="history-tabs">
         <div class="bg-gray-100 p-1 rounded-xl flex items-center h-10">
           <button 
             v-for="tab in [{ label: '全部', value: 'all' }, { label: '收入', value: 'income' }, { label: '支出', value: 'cost' }, { label: '饲料', value: 'feed' }]" 
@@ -26,7 +28,7 @@
       </div>
 
       <!-- 滚动日期选择 -->
-      <div class="px-2">
+      <div class="px-2" id="history-date">
         <div class="flex items-center gap-2 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
           <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-blue-50/50 rounded-xl border border-blue-100 h-12">
             <span class="text-[9px] text-blue-400 mb-0.5">开始日期</span>
@@ -52,28 +54,87 @@
       </div>
     </div>
 
-    <!-- 列表展示 (受 v-loading 控制) -->
-    <div v-loading="loading" class="px-2 space-y-4 min-h-[40vh]">
+    <!-- 列表展示 -->
+    <div id="history-summary" class="px-2 space-y-4 min-h-[40vh]">
+      <!-- 骨架屏加载态 -->
+      <div v-if="loading" class="animate-pulse space-y-4">
+        <!-- 模拟汇总卡片 -->
+        <div class="h-32 bg-gray-200 rounded-2xl w-full"></div>
+        <!-- 模拟列表组 -->
+        <div class="space-y-4">
+           <div class="h-5 bg-gray-200 w-20 rounded"></div>
+           <div class="bg-white p-5 rounded-3xl border border-gray-100 h-24"></div>
+           <div class="bg-white p-5 rounded-3xl border border-gray-100 h-24"></div>
+        </div>
+      </div>
+
+      <template v-else>
       <!-- 汇总卡片区 -->
+      <div v-if="viewType === 'all'" class="bg-[#8B5E3C] p-6 rounded-[2.5rem] shadow-xl text-white mb-6 animate-in fade-in">
+        <div class="flex justify-between items-start mb-4">
+          <div>
+            <h3 class="text-sm opacity-80 font-bold mb-1">净利润</h3>
+            <p class="text-4xl font-black">
+              ¥ <CountTo :value="stats.totalIncome - stats.totalCost" />
+            </p>
+          </div>
+          <div class="text-right">
+             <span class="text-[10px] bg-white/20 px-2 py-0.5 rounded-full block mb-1"> {{ startDate && endDate ? '选定区间' : '全部历史' }} </span>
+          </div>
+        </div>
+        <div class="pt-4 border-t border-white/10 flex items-center justify-between">
+          <div class="flex-1">
+            <p class="text-[10px] opacity-70 font-bold mb-1">总收入</p>
+            <p class="text-lg font-black text-emerald-300">
+              + ¥ <CountTo :value="stats.totalIncome" />
+            </p>
+          </div>
+          <div class="w-[1px] h-8 bg-white/10 mx-4"></div>
+          <div class="flex-1 text-right">
+            <p class="text-[10px] opacity-70 font-bold mb-1">总支出</p>
+            <p class="text-lg font-black text-rose-300">
+              - ¥ <CountTo :value="stats.totalCost" />
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div v-if="viewType === 'income'" class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex justify-between items-center animate-in fade-in">
-        <div><p class="text-xs text-emerald-600">总收入汇总</p><p class="text-xl font-black text-emerald-700">¥ {{ formatNum(stats.totalIncome) }}</p></div>
+        <div>
+          <p class="text-xs text-emerald-600">总收入汇总</p>
+          <p class="text-xl font-black text-emerald-700">
+            ¥ <CountTo :value="stats.totalIncome" />
+          </p>
+        </div>
         <div class="text-right text-[10px] text-emerald-500 leading-relaxed">🥛 奶款: ¥{{ formatNum(stats.milkIncome) }}<br>🐫 骆驼: ¥{{ formatNum(stats.camelIncome) }}</div>
       </div>
 
       <div v-if="viewType === 'cost'" class="bg-rose-50 p-4 rounded-2xl border border-rose-100 flex justify-between items-center animate-in fade-in">
-        <div><p class="text-xs text-rose-600">总支出汇总 (不含进货)</p><p class="text-xl font-black text-rose-700">¥ {{ formatNum(stats.totalCost - stats.feedCost) }}</p></div>
+        <div>
+          <p class="text-xs text-rose-600">总支出汇总 (不含进货)</p>
+          <p class="text-xl font-black text-rose-700">
+            ¥ <CountTo :value="stats.totalCost - stats.feedCost" />
+          </p>
+        </div>
         <div class="text-right text-[10px] text-rose-500 leading-relaxed">🍴 日常喂食: ¥{{ formatNum(stats.dailyCost) }}<br>🚜 杂项开支: ¥{{ formatNum(stats.extraCost) }}</div>
       </div>
 
       <div v-if="viewType === 'feed'" class="space-y-4 animate-in fade-in">
-        <div class="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex justify-between items-center">
-          <div><p class="text-xs text-orange-600">本期进货总支出</p><p class="text-xl font-black text-orange-700">¥ {{ formatNum(stats.feedCost) }}</p></div>
+        <div id="feed-purchase-stat" class="bg-orange-50 p-4 rounded-2xl border border-orange-100 flex justify-between items-center">
+          <div>
+            <p class="text-xs text-orange-600">本期进货总支出</p>
+            <p class="text-xl font-black text-orange-700">
+              ¥ <CountTo :value="stats.feedCost" />
+            </p>
+          </div>
           <div class="text-right"><p class="text-[10px] text-orange-500 font-bold">{{ stats.feedWeight.toFixed(2) }} 吨</p></div>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm">
+        <div id="feed-inventory-stat" class="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm">
           <div class="flex justify-between items-center mb-3 px-1">
             <h3 class="text-sm font-bold text-blue-800 flex items-center gap-1"><el-icon><Box /></el-icon> 自家存货估值</h3>
-            <span class="text-xs font-black text-blue-600">总估值: ¥ {{ formatNum(totalInventoryValue) }}</span>
+            <span class="text-xs font-black text-blue-600">
+              总估值: ¥ <CountTo :value="totalInventoryValue" />
+            </span>
           </div>
           <div class="space-y-2 px-1">
             <div v-for="item in inventoryList" :key="item.id" class="bg-gray-50 p-3 rounded-lg border border-gray-100">
@@ -130,6 +191,7 @@
         </div>
       </div>
       <div v-if="history.length === 0" class="py-20 text-center text-gray-300 text-sm">此时间段暂无记录</div>
+      </template>
     </div>
   </div>
 </template>
@@ -141,7 +203,19 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { ArrowDown, ArrowUp, Box, RefreshRight, Calendar } from '@element-plus/icons-vue'
 import { dataService } from '../api/dataService'
 import AddRecordModal from './AddRecordModal.vue'
+import UserGuide from './UserGuide.vue'
+import CountTo from './CountTo.vue' // 新增引入
+import { formatNum } from '../utils/format' // 新增引入
 
+const historySteps = [
+  { targetId: 'history-tabs', title: '分类查看', content: '你可以点这里，专门看卖奶赚的钱，或者专门看买草料花的钱。' },
+  { targetId: 'history-date', title: '选日期', content: '想看去年的账？点这里选个日子，系统会自动帮你翻出来。' },
+  { targetId: 'history-summary', title: '收支总账', content: '这里会算出你选的这段时间内，一共收入多少、花了多少、净赚多少。', onEnter: () => { viewType.value = 'all' } },
+  { targetId: ['history-tabs', 'feed-purchase-stat'], title: '进货支出', content: '这是你买草料花掉的钱，还会帮你统计一共拉了多少吨回来。', onEnter: () => { viewType.value = 'feed' } },
+  { targetId: 'feed-inventory-stat', title: '库存估值', content: '这里显示你家里还剩多少草料，大概值多少钱，以及它们还能喂多久。', onEnter: () => { viewType.value = 'feed' } }
+]
+
+const historyGuideRef = ref(null)
 const loading = ref(false)
 const history = ref([])
 const inventoryList = ref([])
@@ -247,9 +321,21 @@ const groupedHistory = computed(() => {
 const toggleExpand = (item) => { if (!item.isAggregated) return; const key = item.category + item.amount; if (expandedKeys.has(key)) expandedKeys.delete(key); else expandedKeys.add(key) }
 const isExpanded = (item) => item.isAggregated && expandedKeys.has(item.category + item.amount)
 const getItemStyle = (i) => { if (i.isIncome) return i.category.includes('骆驼') ? { bg: 'bg-emerald-100 text-emerald-600', emoji: '🐫' } : { bg: 'bg-emerald-50 text-emerald-500', emoji: '🥛' }; if (i.cost_type === '库存进货') return { bg: 'bg-orange-50 text-orange-500', emoji: '🌾' }; return (i.cost_type === '日常支出' || i.isAggregated) ? { bg: 'bg-blue-50 text-blue-400', emoji: '🍴' } : { bg: 'bg-gray-50 text-gray-500', emoji: '🚜' } }
-const formatNum = (n) => Math.abs(Math.round(n)).toLocaleString('en-US')
+// formatNum 已经从外部引入，删除本地定义
+
 const handleDelete = (item) => { ElMessageBox.confirm('确定删除吗？', '提示').then(async () => { await dataService.deleteRecord(item.isIncome ? 'income' : 'cost', item.id); ElMessage.success('已删除'); fetchData(); }) }
-onMounted(fetchData)
+onMounted(async () => {
+  await fetchData()
+  // 🔴 检查是否需要显示历史指引（如果用户是第一次进历史页）
+  if (localStorage.getItem('is_first_history') !== 'false') {
+    setTimeout(() => {
+      historyGuideRef.value?.start()
+      localStorage.setItem('is_first_history', 'false')
+    }, 1000)
+  }
+})
+const startHistoryGuide = () => historyGuideRef.value?.start()
+defineExpose({ startHistoryGuide })
 </script>
 
 <style scoped>

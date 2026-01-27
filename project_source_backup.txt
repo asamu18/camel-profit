@@ -3685,61 +3685,53 @@ export const dataService = {
 File: src\App.vue
 --------------------------------------------------
 <template>
-  <!-- 🔴 增加 initialLoading 判断 -->
+  <!-- 1. 初始加载遮罩：防止 Supabase 检查登录状态时的白屏或登录页闪现 -->
   <div v-if="initialLoading" class="min-h-screen flex items-center justify-center bg-[#8B5E3C]">
     <div class="text-white text-xl font-bold animate-pulse">驼账宝加载中...</div>
   </div>
 
   <template v-else>
+    <!-- 2. 登录页 -->
     <Login v-if="!session" />
-    <div v-else class="..."> 
-      <!-- 主页内容 -->
+
+    <!-- 3. 主界面 -->
+    <div v-else class="min-h-screen bg-[#FDFBF7] max-w-md mx-auto shadow-xl border-x border-gray-100 flex flex-col">
+      <header 
+        class="bg-[#8B5E3C] text-white p-6 rounded-b-3xl shadow-lg sticky top-0 z-50"
+        :style="{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top))' }"
+      >
+        <h1 class="text-2xl font-bold">驼账宝</h1>
+        <p class="text-sm opacity-80 mt-1">简单、直白，养驼人的记账神器</p>
+      </header>
+
+      <main class="p-4 flex-1 overflow-y-auto mb-24">
+        <router-view />
+      </main>
+
+      <nav 
+        class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex justify-around shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40"
+        :style="{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))', paddingTop: '0.75rem' }"
+      >
+        <router-link to="/" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
+          <el-icon :size="20"><Money /></el-icon>
+          <span class="text-[10px] font-medium">首页</span>
+        </router-link>
+
+        <!-- 🔴 弱化后的加号按钮：改名为“导入”，颜色变淡，图标变更为文件图标 -->
+        <div class="relative -mt-6">
+          <button id="nav-import" @click="triggerBulkImport" class="p-3 rounded-2xl shadow-md bg-gray-100 text-gray-500 border border-gray-200 active:scale-95 transition-all">
+            <el-icon :size="20"><DocumentAdd /></el-icon>
+            <p class="text-[8px] mt-0.5 font-bold">导入</p>
+          </button>
+        </div>
+
+        <router-link to="/history" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
+          <el-icon :size="20"><Clock /></el-icon>
+          <span class="text-[10px] font-medium">历史</span>
+        </router-link>
+      </nav>
     </div>
-  
-</template>
-  <Login v-if="!session" />
-  <div v-else class="min-h-screen bg-[#FDFBF7] max-w-md mx-auto shadow-xl border-x border-gray-100 flex flex-col">
-    
-    <!-- 顶部 Header -->
-    <header 
-      class="bg-[#8B5E3C] text-white p-6 rounded-b-3xl shadow-lg sticky top-0 z-50"
-      :style="{ paddingTop: 'calc(1.5rem + env(safe-area-inset-top))' }"
-    >
-      <h1 class="text-2xl font-bold">驼账宝</h1>
-      <p class="text-sm opacity-80 mt-1">简单、直白，养驼人的记账神器</p>
-    </header>
-
-    <!-- 主体内容 -->
-    <main class="p-4 flex-1 overflow-y-auto mb-24">
-      <router-view />
-    </main>
-
-    <!-- 底部导航 -->
-    <nav 
-      class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t flex justify-around shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40"
-      :style="{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))', paddingTop: '0.75rem' }"
-    >
-      <router-link to="/" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
-        <el-icon :size="20"><Money /></el-icon>
-        <span class="text-[10px] font-medium">首页</span>
-      </router-link>
-
-      <!-- 🔴 加号按钮：现在负责触发“批量文字导入” -->
-      <div class="relative -mt-10">
-        <button 
-          @click="triggerBulkImport" 
-          class="p-4 rounded-full shadow-xl bg-[#F59E0B] text-white border-4 border-white active:scale-95 transition-transform"
-        >
-          <el-icon :size="24"><Plus /></el-icon>
-        </button>
-      </div>
-
-      <router-link to="/history" class="flex flex-col items-center gap-1 text-gray-400" active-class="!text-[#8B5E3C]">
-        <el-icon :size="20"><Clock /></el-icon>
-        <span class="text-[10px] font-medium">历史</span>
-      </router-link>
-    </nav>
-  </div>
+  </template>
 </template>
 
 <script setup>
@@ -3751,37 +3743,22 @@ import { useRouter } from 'vue-router'
 
 const session = ref(null)
 const router = useRouter()
-const initialLoading = ref(true) // 🔴 默认为 true
+const initialLoading = ref(true)
 
 onMounted(async () => {
-  // 检查一次会话
   const { data } = await supabase.auth.getSession()
   session.value = data.session
   
-  // 监听状态变化
   supabase.auth.onAuthStateChange((_event, _session) => {
     session.value = _session
   })
   
-  // 确认完身份后再关闭加载页
   initialLoading.value = false
 })
 
-// 🔴 修改：点击加号跳转并带上导入指令
 const triggerBulkImport = () => {
-  router.push({ 
-    path: '/', 
-    query: { 
-      action: 'bulkImport', 
-      t: Date.now() 
-    }
-  })
+  router.push({ path: '/', query: { action: 'bulkImport', t: Date.now() } })
 }
-
-onMounted(() => {
-  supabase.auth.getSession().then(({ data }) => { session.value = data.session })
-  supabase.auth.onAuthStateChange((_event, _session) => { session.value = _session })
-})
 </script>
 
 <style>
@@ -3795,6 +3772,7 @@ body { background-color: #8B5E3C; margin: 0; padding: 0; }
 File: src\components\AddRecordModal.vue
 --------------------------------------------------
 <template>
+  <!-- 🔴 删除了之前冗余的空 dialog 标签 -->
   <el-dialog 
     v-model="visible" 
     :title="sceneTitle" 
@@ -3803,9 +3781,7 @@ File: src\components\AddRecordModal.vue
     center 
     destroy-on-close
     append-to-body
-  ></el-dialog> 
-  <el-dialog v-model="visible" :title="sceneTitle" width="95%" style="max-width: 500px;" center destroy-on-close>
-    
+  >
     <el-form :model="form" label-position="top">
       
       <!-- 场景 A: 卖奶 -->
@@ -3814,7 +3790,6 @@ File: src\components\AddRecordModal.vue
           <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" style="width: 100%" size="large" />
         </el-form-item>
         
-        <!-- 步进器优化 -->
         <el-form-item label="这是几天的量？">
           <el-input-number v-model="form.duration" :min="1" :max="30" class="!w-full giant-stepper" size="large" />
         </el-form-item>
@@ -4039,63 +4014,44 @@ File: src\components\Dashboard.vue
 --------------------------------------------------
 <template>
   <div class="space-y-6">
-    <!-- 顶部设置入口 -->
+    <!-- 顶部 -->
     <div class="flex justify-between items-center px-1">
-      <div class="text-xs text-gray-400">版本 v1.4 - 动态看板版</div>
+      <div class="text-xs text-gray-400">版本 v1.5 - 极简导览版</div>
       <button @click="openSettings" class="text-[#8B5E3C] text-sm flex items-center gap-1 font-bold">
         <el-icon><Setting /></el-icon> 经营设置/重置
       </button>
     </div>
 
-    <!-- 1. 核心：今天到手净赚 (字号极大化) -->
-    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-orange-100 flex flex-col justify-between h-44 relative overflow-hidden">
+    <!-- 1. 今天到手净赚 (ID: guide-profit) -->
+    <div id="guide-profit" class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-orange-100 flex flex-col justify-between h-44 relative overflow-hidden">
       <span class="text-gray-500 text-base font-bold">今天到手净赚</span>
       <div :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
         <span class="text-5xl font-black">¥ {{ formatNum(todayProfit) }}</span>
       </div>
       <div class="flex justify-between items-center">
         <p class="text-xs text-gray-400 font-medium italic">
-          {{ hasTodayMilk ? '* 刚才记了一笔实账' : '* 这是今天的预估' }}
+          {{ hasTodayMilk ? `* 已按 ${todayMilkDuration} 天产量平摊` : '* 这是今天的预估' }}
         </p>
-        <div class="opacity-10">
-          <el-icon :size="40" :class="todayProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'"><TrendCharts /></el-icon>
-        </div>
+        <div class="opacity-10"><el-icon :size="40"><TrendCharts /></el-icon></div>
       </div>
     </div>
 
-    <!-- 🔴 动态数据看板：根据是否交奶自动切换 1列 或 2列 布局 -->
-    <div class="grid gap-4" :class="hasTodayMilk ? 'grid-cols-2' : 'grid-cols-1'">
-      
-      <!-- 2. 今日交奶实收 (仅在已记账时显示) -->
-      <div v-if="hasTodayMilk" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden animate-in fade-in zoom-in duration-300">
-        <div class="h-5 flex items-center">
-          <span class="text-gray-400 text-sm font-bold">今日交奶实收</span>
-        </div>
-        <div>
-          <span class="text-2xl font-black text-emerald-500">
-            ¥ {{ formatNum(todayIncome) }}
-          </span>
-          <div class="h-4 mt-1">
-            <p class="text-[10px] opacity-0">占位</p>
-          </div>
-        </div>
-        <!-- 已交奶打卡大图标 -->
-        <div class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12">
-          <el-icon :size="60"><CircleCheckFilled /></el-icon>
-        </div>
+    <!-- 数据面板 (ID: guide-cards) -->
+    <div id="guide-cards" class="grid gap-4" :class="hasTodayMilk ? 'grid-cols-2' : 'grid-cols-1'">
+      <div v-if="hasTodayMilk" class="bg-white p-5 rounded-3xl border border-gray-50 flex flex-col justify-between h-32 relative overflow-hidden">
+        <span class="text-gray-400 text-sm font-bold">今日交奶实收</span>
+        <span class="text-2xl font-black text-emerald-500">¥ {{ formatNum(todayIncome) }}</span>
+        <div class="absolute -right-2 -bottom-2 opacity-10 text-emerald-500 scale-150 rotate-12"><el-icon :size="60"><CircleCheckFilled /></el-icon></div>
       </div>
 
-      <!-- 3. 每天喂草开支 (如果不交奶则铺满全宽) -->
-      <div @click="showTemplate = true" class="bg-white p-5 rounded-3xl shadow-sm border border-gray-50 flex flex-col justify-between h-32 active:bg-gray-50 transition-all">
+      <div @click="showTemplate = true" class="bg-white p-5 rounded-3xl border border-gray-50 flex flex-col justify-between h-32 active:bg-gray-50 transition-all">
         <div class="h-5 flex justify-between items-center">
           <span class="text-gray-400 text-sm font-bold">每天喂草开支</span>
           <el-icon class="text-gray-300"><ArrowRight /></el-icon>
         </div>
         <div>
           <span class="text-2xl font-black text-rose-500">¥ {{ formatNum(dailyFixedCost) }}</span>
-          <div class="h-4 mt-1">
-            <p class="text-[10px] text-blue-400 font-bold">点这里改明细</p>
-          </div>
+          <p class="text-[10px] text-blue-400 font-bold mt-1">点这里改明细</p>
         </div>
       </div>
     </div>
@@ -4121,41 +4077,32 @@ File: src\components\Dashboard.vue
       </div>
     </div>
 
-    <!-- 快捷操作按钮 -->
-    <div class="space-y-4">
-      <button 
-        @click="openMilk" 
-        :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" 
-        class="w-full py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all"
-      >
+    <!-- 巨大动作按钮 (ID: guide-actions) -->
+    <div id="guide-actions" class="space-y-4">
+      <button @click="openMilk" :class="hasTodayMilk ? 'bg-gray-400' : 'bg-[#F59E0B]'" class="w-full py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
         <span class="text-3xl">🥛</span>
         <span>{{ hasTodayMilk ? '今日账已记完' : '刚才交了奶' }}</span>
       </button>
 
-      <button 
-        @click="openFeed" 
-        class="w-full bg-[#059669] py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all"
-      >
+      <button @click="openFeed" class="w-full bg-[#059669] py-7 rounded-3xl font-black text-2xl shadow-lg text-white flex items-center justify-center gap-3 active:scale-95 transition-all">
         <span class="text-3xl">🌾</span>
         <span>进饲料 / 买草</span>
       </button>
 
-      <button 
-        @click="openExtra" 
-        class="w-full bg-[#C4A484] py-5 rounded-3xl font-black text-lg shadow-md text-white flex items-center justify-center gap-2 active:scale-95 transition-all"
-      >
+      <button @click="openExtra" class="w-full bg-[#C4A484] py-5 rounded-3xl font-black text-lg shadow-md text-white flex items-center justify-center gap-2 active:scale-95 transition-all">
         <el-icon :size="20"><EditPen /></el-icon>
         <span>记一笔杂费 (修车、买药等)</span>
       </button>
     </div>
 
-    <!-- 弹窗组件 -->
+    <!-- 弹窗 -->
     <AddRecordModal ref="addModalRef" @success="syncData" />
     <SetupWizard ref="wizardRef" @finish="syncData" />
-    <SettingsModal ref="settingsRef" @saved="syncData" />
+    <SettingsModal ref="settingsRef" @saved="syncData" @showGuide="startTutorial" />
     <ImportMilkModal ref="importModalRef" @success="syncData" />
+    <UserGuide ref="uiGuideRef" :steps="uiSteps" @finish="handleGuideFinish" />
 
-    <!-- 每天喂草开支弹窗 -->
+    <!-- 喂草弹窗 -->
     <el-dialog v-model="showTemplate" title="每天喂草开支管理" width="95%" style="max-width: 450px" center destroy-on-close>
       <div class="space-y-4">
         <div class="max-h-[40vh] overflow-y-auto space-y-3 pr-1">
@@ -4167,40 +4114,31 @@ File: src\components\Dashboard.vue
             <div class="grid grid-cols-2 gap-4">
               <div class="flex flex-col gap-1">
                 <span class="text-[10px] text-gray-400 ml-1">数量</span>
-                <el-input-number v-model="item.quantity" :min="0" size="large" class="w-full" />
+                <el-input-number v-model="item.quantity" :min="0" size="large" class="w-full" :controls="false" />
               </div>
               <div class="flex flex-col gap-1">
                 <span class="text-[10px] text-gray-400 ml-1">单价</span>
-                <el-input-number v-model="item.unit_price" :min="0" size="large" class="w-full" />
+                <el-input-number v-model="item.unit_price" :min="0" size="large" class="w-full" :controls="false" />
               </div>
             </div>
           </div>
           <el-button class="w-full py-4 border-dashed rounded-xl font-bold" @click="templateCopy.push({name: '', quantity: 1, unit_price: 0})">+ 增加开支项</el-button>
         </div>
-
-        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-          <p class="text-sm font-bold text-blue-700 mb-2 flex items-center gap-1">
-            <el-icon><Calendar /></el-icon> 同时也修改以前的账单
-          </p>
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 mt-2">
+          <p class="text-sm font-bold text-blue-700 mb-2 flex items-center gap-1"><el-icon><Calendar /></el-icon> 同时也修改以前的账单</p>
           <div class="flex items-center gap-2">
-            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12">
-                <span class="text-[8px] text-blue-400">从哪天起</span>
-                <span class="text-xs font-black text-blue-700">{{ syncStartDate || '选日期' }}</span>
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12 overflow-hidden">
+                <span class="text-[8px] text-blue-400">从哪天起</span><span class="text-xs font-black text-blue-700">{{ syncStartDate || '点此选日期' }}</span>
                 <input type="date" v-model="syncStartDate" class="absolute inset-0 opacity-0 w-full h-full" />
             </div>
             <div class="text-blue-300">-</div>
-            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12">
-                <span class="text-[8px] text-blue-400">到哪天止</span>
-                <span class="text-xs font-black text-blue-700">{{ syncEndDate || '选日期' }}</span>
+            <div class="flex-1 relative flex flex-col items-center justify-center p-1 bg-white rounded-xl border border-blue-200 h-12 overflow-hidden">
+                <span class="text-[8px] text-blue-400">到哪天止</span><span class="text-xs font-black text-blue-700">{{ syncEndDate || '点此选日期' }}</span>
                 <input type="date" v-model="syncEndDate" class="absolute inset-0 opacity-0 w-full h-full" />
             </div>
-            <button v-if="syncStartDate" @click="syncStartDate='';syncEndDate=''" class="text-gray-400 p-2"><el-icon :size="20"><RefreshRight /></el-icon></button>
           </div>
         </div>
-
-        <el-button type="primary" class="w-full py-6 font-black text-xl rounded-3xl shadow-lg" @click="saveTemplate" :loading="saving">
-          确认保存修改
-        </el-button>
+        <el-button type="primary" class="w-full py-6 font-black text-xl rounded-3xl shadow-lg" @click="saveTemplate" :loading="saving">确认保存修改</el-button>
       </div>
     </el-dialog>
   </div>
@@ -4215,12 +4153,14 @@ import AddRecordModal from './AddRecordModal.vue'
 import SetupWizard from './SetupWizard.vue'
 import SettingsModal from './SettingsModal.vue'
 import ImportMilkModal from './ImportMilkModal.vue'
+import UserGuide from './UserGuide.vue'
 import { useRoute, useRouter } from 'vue-router'
 
 const addModalRef = ref(null)
 const wizardRef = ref(null)
 const settingsRef = ref(null)
 const importModalRef = ref(null)
+const uiGuideRef = ref(null)
 const route = useRoute()
 const router = useRouter()
 
@@ -4233,177 +4173,102 @@ const syncStartDate = ref('')
 const syncEndDate = ref('')
 const saving = ref(false)
 
+const uiSteps = [
+  { targetId: 'guide-profit', title: '1. 核心账本', content: '这里显示你扣除喂草费后，今天真正落袋的钱。' },
+  { targetId: 'open-milk-btn', title: '2. 每天交奶点这里', content: '重要！每天交完奶，点这个大橙色按钮。不要去点底部的那个小按钮！' },
+  { targetId: 'nav-import', title: '3. 只有批量导入才点它', content: '底部的这个按钮是用来粘贴收奶站发来的“微信长信息”的。平时记账不要用它。' },
+  { targetId: 'nav-history', title: '4. 查旧账点这里', content: '想看上个月赚了多少？点这里进入历史账本。' }
+]
+
 const toNum = (val) => Number(val) || 0
 const formatNum = (n) => {
   if (n === null || n === undefined) return '0'
-  const rounded = Math.round(n)
-  return (rounded < 0 ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
+  const rounded = Math.round(n); return (rounded < 0 ? '-' : '') + Math.abs(rounded).toLocaleString('en-US')
 }
 
-const dailyPotentialIncome = computed(() => {
-  if (!settings.value) return 0
-  return (toNum(settings.value.milk_quantity_per_time) * toNum(settings.value.milk_price)) / toNum(settings.value.milk_frequency || 1)
-})
-
-const dailyFixedCost = computed(() => {
-  const list = settings.value?.daily_template || []
-  return list.reduce((s, i) => s + (toNum(i.quantity) * toNum(i.unit_price)), 0)
-})
-
-const todayIncome = computed(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  return income.value.filter(i => i.date === today && i.category === '驼奶销售').reduce((s, i) => s + toNum(i.amount), 0)
-})
-
+const dailyPotentialIncome = computed(() => settings.value ? (toNum(settings.value.milk_quantity_per_time) * toNum(settings.value.milk_price)) / toNum(settings.value.milk_frequency || 1) : 0)
+const dailyFixedCost = computed(() => (settings.value?.daily_template || []).reduce((s, i) => s + (toNum(i.quantity) * toNum(i.unit_price)), 0))
+const todayIncome = computed(() => { const today = new Date().toISOString().slice(0, 10); return income.value.filter(i => i.date === today && i.category === '驼奶销售').reduce((s, i) => s + toNum(i.amount), 0) })
 const hasTodayMilk = computed(() => todayIncome.value > 0)
+const todayMilkDuration = computed(() => { const today = new Date().toISOString().slice(0, 10); const record = income.value.find(i => i.date === today && i.category === '驼奶销售'); return record ? (toNum(record.duration) || 1) : 1 })
+const todayExtraCost = computed(() => { const today = new Date().toISOString().slice(0, 10); return cost.value.filter(c => c.date === today && c.cost_type !== '日常支出' && c.cost_type !== '库存进货').reduce((s, i) => s + toNum(i.amount), 0) })
+const todayProfit = computed(() => (hasTodayMilk.value ? (todayIncome.value / todayMilkDuration.value) : dailyPotentialIncome.value) - dailyFixedCost.value - todayExtraCost.value)
+const monthlyProfit = computed(() => { if (!settings.value) return 0; const now = new Date(); const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(); let totalActualIncome = 0; let totalDaysCovered = 0; income.value.forEach(i => { const d = new Date(i.date); if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && i.category === '驼奶销售') { totalActualIncome += toNum(i.amount); totalDaysCovered += Math.max(1, toNum(i.duration || 1)) } }); const remainingDays = Math.max(0, daysInMonth - totalDaysCovered); const totalProjectedIncome = totalActualIncome + (remainingDays * dailyPotentialIncome.value); const totalFixedCost = dailyFixedCost.value * daysInMonth; const totalExtraCost = cost.value.filter(c => { const d = new Date(c.date); return d.getMonth() === now.getMonth() && c.cost_type !== '日常支出' && c.cost_type !== '库存进货' }).reduce((s, v) => s + toNum(v.amount), 0); return totalProjectedIncome - totalFixedCost - totalExtraCost })
+const monthlyExtra = computed(() => { const now = new Date(); return cost.value.filter(c => { const d = new Date(c.date); return d.getMonth() === now.getMonth() && c.cost_type !== '日常支出' && c.cost_type !== '库存进货' }).reduce((s, i) => s + toNum(i.amount), 0) })
 
-const todayMilkDuration = computed(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  const record = income.value.find(i => i.date === today && i.category === '驼奶销售')
-  return record ? (toNum(record.duration) || 1) : 1
-})
-
-const todayExtraCost = computed(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  return cost.value
-    .filter(c => c.date === today && c.cost_type !== '日常支出' && c.cost_type !== '库存进货')
-    .reduce((s, i) => s + toNum(i.amount), 0)
-})
-
-const todayProfit = computed(() => {
-  const effectiveDailyIncome = hasTodayMilk.value ? (todayIncome.value / todayMilkDuration.value) : dailyPotentialIncome.value
-  return effectiveDailyIncome - dailyFixedCost.value - todayExtraCost.value
-})
-
-const monthlyProfit = computed(() => {
-  if (!settings.value) return 0
-  const now = new Date()
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  let totalActualIncome = 0
-  let totalDaysCovered = 0
-  income.value.forEach(i => {
-    const d = new Date(i.date)
-    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && i.category === '驼奶销售') {
-      totalActualIncome += toNum(i.amount)
-      totalDaysCovered += Math.max(1, toNum(i.duration || 1))
-    }
-  })
-  const remainingDays = Math.max(0, daysInMonth - totalDaysCovered)
-  const totalProjectedIncome = totalActualIncome + (remainingDays * dailyPotentialIncome.value)
-  const totalFixedCost = dailyFixedCost.value * daysInMonth
-  const totalExtraCost = cost.value.filter(c => {
-    const d = new Date(c.date)
-    return d.getMonth() === now.getMonth() && c.cost_type !== '日常支出' && c.cost_type !== '库存进货'
-  }).reduce((s, v) => s + toNum(v.amount), 0)
-  return totalProjectedIncome - totalFixedCost - totalExtraCost
-})
-
-const monthlyExtra = computed(() => {
-  const now = new Date()
-  return cost.value.filter(c => {
-    const d = new Date(c.date)
-    return d.getMonth() === now.getMonth() && c.cost_type !== '日常支出' && c.cost_type !== '库存进货'
-  }).reduce((s, i) => s + toNum(i.amount), 0)
-})
-
-// 🔴 修改：向导检查逻辑增强
-const runWizardCheck = async () => {
-  // 如果 settings 已经有值了，说明已经初始化过，直接返回
-  if (settings.value && settings.value.daily_template?.length > 0) return
-  
-  if (wizardRef.value) {
-    console.log("执行初始化向导检查...")
-    wizardRef.value.check()
+const autoFillMissingCosts = async (userId, dailyTemplate) => {
+  if (!dailyTemplate || dailyTemplate.length === 0) return false;
+  const { data: lastCost } = await supabase.from('cost').select('date').eq('user_id', userId).eq('cost_type', '日常支出').order('date', { ascending: false }).limit(1)
+  const todayStr = new Date().toISOString().slice(0, 10); let startDate = new Date()
+  if (lastCost?.length > 0) { startDate = new Date(lastCost[0].date); startDate.setDate(startDate.getDate() + 1) } else { startDate = new Date(todayStr) }
+  const today = new Date(todayStr); const batch = []
+  for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().slice(0, 10); dailyTemplate.forEach(item => { batch.push({ user_id: userId, date: dateStr, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }) })
   }
+  if (batch.length > 0) { await supabase.from('cost').insert(batch); return true } return false
 }
 
 const syncData = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
   const [incRes, costRes, setRes] = await Promise.all([
-    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
-    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(100),
+    supabase.from('income').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(200),
+    supabase.from('cost').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(500),
     supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
   ])
+  if (setRes.data) {
+    settings.value = setRes.data; templateCopy.value = JSON.parse(JSON.stringify(setRes.data.daily_template || []))
+    await autoFillMissingCosts(user.id, setRes.data.daily_template)
+  }
   if (incRes.data) income.value = incRes.data
   if (costRes.data) cost.value = costRes.data
-  if (setRes.data) {
-    settings.value = setRes.data
-    templateCopy.value = JSON.parse(JSON.stringify(setRes.data.daily_template || []))
-    // 🔴 同步完数据后，再次触发检查（如果是新用户且同步完依然没数据，向导会弹出）
-    runWizardCheck()
-  } else {
-    // 彻底没数据，执行检查
-    runWizardCheck()
+  
+  if (localStorage.getItem('is_new_user') === 'true') {
+    localStorage.removeItem('is_new_user')
+    setTimeout(() => { uiGuideRef.value?.start() }, 1000)
   }
 }
 
 const saveTemplate = async () => {
   saving.value = true
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    const today = new Date().toISOString().slice(0, 10)
+    const { data: { user } } = await supabase.auth.getUser(); const today = new Date().toISOString().slice(0, 10)
     await supabase.from('settings').update({ daily_template: templateCopy.value }).eq('user_id', user.id)
     if (syncStartDate.value && syncEndDate.value) {
       await supabase.from('cost').delete().eq('user_id', user.id).eq('cost_type', '日常支出').gte('date', syncStartDate.value).lte('date', syncEndDate.value)
-      const batchRecords = []
-      const start = new Date(syncStartDate.value); const end = new Date(syncEndDate.value)
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().slice(0, 10)
-        templateCopy.value.forEach(item => { batchRecords.push({ user_id: user.id, date: dateStr, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }) })
-      }
-      if (batchRecords.length > 0) await supabase.from('cost').insert(batchRecords)
+      const batch = []; const start = new Date(syncStartDate.value); const end = new Date(syncEndDate.value)
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const dateStr = d.toISOString().slice(0, 10); templateCopy.value.forEach(item => { batch.push({ user_id: user.id, date: dateStr, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }) }) }
+      if (batch.length > 0) await supabase.from('cost').insert(batch)
     } else {
       await supabase.from('cost').delete().eq('user_id', user.id).eq('date', today).eq('cost_type', '日常支出')
       const dailyRecords = templateCopy.value.map(item => ({ user_id: user.id, date: today, category: item.name, amount: toNum(item.quantity) * toNum(item.unit_price), quantity: toNum(item.quantity), unit_price: toNum(item.unit_price), cost_type: '日常支出' }))
       if (dailyRecords.length > 0) await supabase.from('cost').insert(dailyRecords)
     }
-    ElMessage.success('保存成功')
-    showTemplate.value = false; syncStartDate.value = ''; syncEndDate.value = ''; syncData()
-  } catch (e) { ElMessage.error('保存失败') } finally { saving.value = false }
+    ElMessage.success('保存成功'); showTemplate.value = false; syncData()
+  } catch (e) { ElMessage.error('失败') } finally { saving.value = false }
 }
 
-const openMilk = () => {
-  if (!addModalRef.value) return
-  if (hasTodayMilk.value) {
-    ElMessageBox.confirm('今天交奶已经记过了，要去历史里改吗？', '今日已交', { confirmButtonText: '去历史修改', cancelButtonText: '不用了' }).then(() => router.push('/history'))
-    return
-  }
-  addModalRef.value.openWithScene('卖奶')
-}
+const startTutorial = () => uiGuideRef.value?.start()
+const openMilk = () => { if (hasTodayMilk.value) { ElMessageBox.confirm('今天已记过，去历史改吗？', '今日已交').then(() => router.push('/history')) } else { addModalRef.value.openWithScene('卖奶') } }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
 const openExtra = () => addModalRef.value.openWithScene('其他')
 const openSettings = () => settingsRef.value.open()
 
-// 🔴 修改：批量导入弹窗开启逻辑，增加安全检查
-const openAIImport = async () => { 
-  if (!importModalRef.value) await nextTick()
-  if (importModalRef.value) {
-    importModalRef.value.open()
-  }
-}
-
 onMounted(async () => {
   await syncData()
-  // 移除之前的 1000ms 盲目 check，改用 syncData 内部驱动
+  setTimeout(() => { wizardRef.value?.check() }, 1000)
 })
 
-// 🔴 修复：加号点击跳转回首页后的自动弹出
 watch(() => route.query.action, async (val) => {
-  if (val === 'bulkImport') {
-    // 延迟确保 Dashboard 已完全挂载
-    setTimeout(() => {
-      openAIImport()
-      // 清理路由防止重复触发
-      router.replace({ path: '/', query: {} })
-    }, 300)
+  if (val === 'bulkImport') { 
+    if (!importModalRef.value) await nextTick(); 
+    importModalRef.value.open() 
+    setTimeout(() => { router.replace({ path: '/', query: {} }) }, 500)
   }
 }, { immediate: true })
-</script>
 
-<style scoped>
-.font-black { font-family: system-ui, -apple-system, sans-serif; }
-</style>
+defineExpose({ startTutorial })
+</script>
 
 ==================================================
 
@@ -4668,6 +4533,8 @@ File: src\components\HistoryView.vue
   <div class="space-y-4 pb-24">
     <!-- 🔴 关键修复：把弹窗挪到最顶层，不要被 v-loading 所在的 div 包裹 -->
     <AddRecordModal ref="addModalRef" @success="fetchData" />
+     <!-- 🔴 历史页面的指引组件 -->
+    <UserGuide ref="historyGuideRef" :steps="historySteps" />
 
     <!-- 顶部导航与筛选 -->
     <div class="sticky top-0 bg-[#FDFBF7] z-30 py-2 space-y-3 shadow-sm px-1">
@@ -4807,7 +4674,15 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { ArrowDown, ArrowUp, Box, RefreshRight, Calendar } from '@element-plus/icons-vue'
 import { dataService } from '../api/dataService'
 import AddRecordModal from './AddRecordModal.vue'
+import UserGuide from './UserGuide.vue'
 
+const historySteps = [
+  { targetId: 'history-tabs', title: '分类查看', content: '你可以点这里，专门看卖奶赚的钱，或者专门看买草花的钱。' },
+  { targetId: 'history-date', title: '选日期', content: '想看去年的账？点这里选个日子，系统会自动帮你翻出来。' },
+  { targetId: 'history-summary', title: '收支总账', content: '这里会算出你选的这段时间内，一共收了多少、花了多少、净赚多少。' }
+]
+
+const historyGuideRef = ref(null)
 const loading = ref(false)
 const history = ref([])
 const inventoryList = ref([])
@@ -4915,7 +4790,18 @@ const isExpanded = (item) => item.isAggregated && expandedKeys.has(item.category
 const getItemStyle = (i) => { if (i.isIncome) return i.category.includes('骆驼') ? { bg: 'bg-emerald-100 text-emerald-600', emoji: '🐫' } : { bg: 'bg-emerald-50 text-emerald-500', emoji: '🥛' }; if (i.cost_type === '库存进货') return { bg: 'bg-orange-50 text-orange-500', emoji: '🌾' }; return (i.cost_type === '日常支出' || i.isAggregated) ? { bg: 'bg-blue-50 text-blue-400', emoji: '🍴' } : { bg: 'bg-gray-50 text-gray-500', emoji: '🚜' } }
 const formatNum = (n) => Math.abs(Math.round(n)).toLocaleString('en-US')
 const handleDelete = (item) => { ElMessageBox.confirm('确定删除吗？', '提示').then(async () => { await dataService.deleteRecord(item.isIncome ? 'income' : 'cost', item.id); ElMessage.success('已删除'); fetchData(); }) }
-onMounted(fetchData)
+onMounted(async () => {
+  await fetchData()
+  // 🔴 检查是否需要显示历史指引（如果用户是第一次进历史页）
+  if (localStorage.getItem('is_first_history') !== 'false') {
+    setTimeout(() => {
+      historyGuideRef.value?.start()
+      localStorage.setItem('is_first_history', 'false')
+    }, 1000)
+  }
+})
+const startHistoryGuide = () => historyGuideRef.value?.start()
+defineExpose({ startHistoryGuide })
 </script>
 
 <style scoped>
@@ -5233,8 +5119,7 @@ const handleLogin = async () => {
 File: src\components\SettingsModal.vue
 --------------------------------------------------
 <template>
-  <el-dialog v-model="visible" title="经营设置" width="90%" style="max-width: 400px;" center destroy-on-close>
-    
+  <el-dialog v-model="visible" title="经营设置" width="90%" style="max-width: 400px;" center destroy-on-close append-to-body>
     <div class="mb-6 bg-orange-50 p-3 rounded-lg text-xs text-orange-800">
       <el-icon><InfoFilled /></el-icon> 这里的数据变动会影响后续的利润统计。
     </div>
@@ -5242,7 +5127,7 @@ File: src\components\SettingsModal.vue
     <el-form label-position="top">
       <h3 class="font-bold border-l-4 border-orange-500 pl-2 mb-3 text-sm">🐪 驼群规模</h3>
       <div class="grid grid-cols-2 gap-4">
-        <el-form-item label="骆驼总数 (峰)">
+        <el-form-item label="总驼数 (峰)">
           <el-input-number v-model="form.total_camels" :min="1" size="large" style="width: 100%" :controls="false" />
         </el-form-item>
         <el-form-item label="正在产奶 (峰)">
@@ -5250,39 +5135,33 @@ File: src\components\SettingsModal.vue
         </el-form-item>
       </div>
 
-      <!-- 危险区域 -->
       <div class="mt-8 pt-6 border-t border-red-100 flex flex-col">
-  <h3 class="text-red-500 font-bold text-xs mb-2 flex items-center gap-1">
-    <el-icon><Warning /></el-icon> 账户安全与重置
-  </h3>
-  <p class="text-[10px] text-gray-400 mb-4">清空后将无法找回数据，系统会重新进入初始化向导。</p>
-  
-  <!-- 使用 flex 容器并强制子项宽度 -->
-  <div class="flex flex-col gap-3">
-    <el-button 
-      type="danger" 
-      plain 
-      class="!w-full !m-0" 
-      @click="handleResetAll"
-    >
-      一键清除所有数据
-    </el-button>
-    
-    <el-button 
-      type="info" 
-      plain 
-      class="!w-full !m-0" 
-      @click="handleLogout"
-    >
-      退出当前账号
-    </el-button>
-  </div>
-</div>
+        <h3 class="text-red-500 font-bold text-xs mb-4 flex items-center gap-1">
+          <el-icon><Warning /></el-icon> 账户安全与帮助
+        </h3>
+        
+        <div class="flex flex-col gap-3">
+          <!-- 🔴 导览入口 -->
+          <el-button type="primary" plain class="!w-full !m-0 !h-12 font-bold" @click="handleShowGuide">
+            再看一遍功能演示
+          </el-button>
+
+          <el-button type="danger" plain class="!w-full !m-0 !h-12 font-bold" @click="handleResetAll">
+            一键清除所有数据
+          </el-button>
+          
+          <el-button type="info" plain class="!w-full !m-0 !h-12 font-bold" @click="handleLogout">
+            退出当前账号
+          </el-button>
+        </div>
+      </div>
     </el-form>
 
     <template #footer>
-      <el-button @click="visible = false" size="large">取消</el-button>
-      <el-button type="primary" @click="save" :loading="loading" size="large">保存设置</el-button>
+      <div class="flex gap-3">
+        <el-button @click="visible = false" class="flex-1 rounded-xl">取消</el-button>
+        <el-button type="primary" @click="save" :loading="loading" class="flex-1 rounded-xl font-bold">保存设置</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -5297,86 +5176,36 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const visible = ref(false)
 const loading = ref(false)
 const form = reactive({ total_camels: 0, milking_camels: 0 })
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['saved', 'showGuide'])
 
 const open = async () => {
   visible.value = true
   const { data: { user } } = await supabase.auth.getUser()
   const { data } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle()
-  if (data) {
-    form.total_camels = data.total_camels
-    form.milking_camels = data.milking_camels
-  }
+  if (data) { form.total_camels = data.total_camels; form.milking_camels = data.milking_camels }
 }
 
 const save = async () => {
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    const { error } = await supabase.from('settings').upsert({
-      user_id: user.id,
-      total_camels: form.total_camels,
-      milking_camels: form.milking_camels
-    }, { onConflict: 'user_id' })
-
-    if (error) throw error
-    ElMessage.success('设置已保存')
-    visible.value = false
-    emit('saved')
-  } catch (e) {
-    ElMessage.error('保存失败')
-  } finally {
-    loading.value = false
-  }
+    await supabase.from('settings').upsert({ user_id: user.id, total_camels: form.total_camels, milking_camels: form.milking_camels }, { onConflict: 'user_id' })
+    ElMessage.success('已保存'); visible.value = false; emit('saved')
+  } catch (e) { ElMessage.error('失败') } finally { loading.value = false }
 }
 
-// 🔴 核心逻辑：退出登录
-const handleLogout = async () => {
-  try {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
-    
-    // 清除所有本地缓存
-    localStorage.clear()
-    
-    ElMessage.success('已安全退出')
-    visible.value = false
-    
-    // 强制刷新页面，触发 App.vue 的初始加载逻辑回到登录页
-    window.location.reload()
-  } catch (e) {
-    ElMessage.error('退出失败: ' + e.message)
-  }
+const handleLogout = async () => { await supabase.auth.signOut(); localStorage.clear(); window.location.reload() }
+
+const handleShowGuide = () => {
+  visible.value = false
+  emit('showGuide')
 }
 
 const handleResetAll = () => {
-  ElMessageBox.confirm(
-    '确定要删除所有账单、设置和存货信息吗？系统将恢复到初次使用的状态。',
-    '彻底清空确认',
-    {
-      confirmButtonText: '确定清空',
-      cancelButtonText: '取消',
-      type: 'warning',
-      confirmButtonClass: 'el-button--danger'
-    }
-  ).then(async () => {
+  ElMessageBox.confirm('确定要删除吗？不可撤销。', '彻底重置', { confirmButtonText: '确定', type: 'warning' }).then(async () => {
     loading.value = true
-    try {
-      // 1. 调用 API 删除所有数据
-      await dataService.clearAllUserData()
-      
-      // 2. 清理所有本地缓存
-      localStorage.clear()
-      
-      ElMessage.success('数据已全部清除')
-      
-      // 3. 🔴 关键点：强制重定向到根路径并刷新
-      window.location.href = window.location.origin
-    } catch (e) {
-      ElMessage.error('清除失败')
-    } finally {
-      loading.value = false
-    }
+    try { await dataService.clearAllUserData(); localStorage.clear(); window.location.href = window.location.origin }
+    catch (e) { ElMessage.error('失败') } finally { loading.value = false }
   }).catch(() => {})
 }
 
@@ -5388,7 +5217,6 @@ defineExpose({ open })
 File: src\components\SetupWizard.vue
 --------------------------------------------------
 <template>
-  <!-- 🔴 增加了 append-to-body 确保弹窗在最顶层 -->
   <el-dialog 
     v-model="visible" 
     title="初始化您的驼场" 
@@ -5399,10 +5227,9 @@ File: src\components\SetupWizard.vue
     append-to-body
     destroy-on-close
   >
-    
     <div class="h-[60vh] overflow-y-auto px-1">
-      <!-- 第一步：规模与收入参数 -->
-      <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100">
+      <!-- 第一步：规模 -->
+      <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100" id="guide-total">
         <h3 class="font-bold text-blue-800 mb-3 text-sm flex items-center">
           <span class="text-lg mr-2">🐪</span> 基础规模与收入预估
         </h3>
@@ -5416,7 +5243,7 @@ File: src\components\SetupWizard.vue
             </el-form-item>
           </div>
           
-          <div class="bg-white p-3 rounded-lg border border-blue-200">
+          <div class="bg-white p-3 rounded-lg border border-blue-200" id="guide-income">
             <div class="text-xs text-blue-500 font-bold mb-2">卖奶情况</div>
             <div class="flex items-center gap-2 mb-2">
               <span class="text-sm text-gray-600 whitespace-nowrap">每</span>
@@ -5438,7 +5265,7 @@ File: src\components\SetupWizard.vue
       </div>
 
       <!-- 第二步：支出模板 -->
-      <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
+      <div class="bg-orange-50 p-4 rounded-xl border border-orange-100" id="guide-template">
         <h3 class="font-bold text-orange-800 mb-3 text-sm flex justify-between items-center">
           <span>💰 每天喂草开支模板</span>
           <span class="text-xs font-normal bg-orange-100 px-2 py-0.5 rounded text-orange-600">可改名</span>
@@ -5466,33 +5293,38 @@ File: src\components\SetupWizard.vue
           </div>
         </div>
         
-        <el-button class="w-full mt-2 border-dashed bg-white" @click="addItem">
-          <span class="text-orange-500 font-bold">+ 添加其他开支项</span>
+        <el-button class="w-full mt-2 border-dashed bg-white font-bold h-10" @click="addItem">
+          + 添加其他支出项
         </el-button>
       </div>
     </div>
 
     <div class="py-4 bg-white border-t mt-2">
-      <div class="flex justify-between text-sm mb-2 px-2">
-        <span class="text-gray-500">预估日净利 (收入-支出):</span>
-        <span class="font-bold text-lg" :class="dailyProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+      <div class="flex justify-between text-sm mb-4 px-2">
+        <span class="text-gray-500 font-bold">预计日净利:</span>
+        <span class="font-black text-xl" :class="toNum(dailyProfit) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
           ¥ {{ dailyProfit }}
         </span>
       </div>
-      <el-button type="primary" size="large" class="w-full font-bold h-12" @click="saveSettings" :loading="loading">
+      <el-button type="primary" size="large" class="w-full font-black text-xl h-14 !rounded-2xl shadow-lg" @click="saveSettings" :loading="loading">
         保存并开始记账
       </el-button>
     </div>
+
+    <!-- 挂载引导组件 -->
+    <UserGuide ref="guideRef" :steps="wizardSteps" />
   </el-dialog>
 </template>
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { supabase } from '../lib/supabase'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import UserGuide from './UserGuide.vue'
 
 const visible = ref(false)
 const loading = ref(false)
+const guideRef = ref(null)
 const emit = defineEmits(['finish'])
 
 const defaultItems = [
@@ -5516,34 +5348,40 @@ const form = reactive({
   template: JSON.parse(JSON.stringify(defaultItems))
 })
 
+const wizardSteps = [
+  { targetId: 'guide-total', title: '第1步：写下规模', content: '输入你骆驼的总数。系统会根据这个数帮你算出每年的开支基准。' },
+  { targetId: 'guide-income', title: '第2步：记下卖奶频率', content: '设置你几天交一次奶。系统会自动把每一桶奶的钱平摊到每一天。' },
+  { targetId: 'guide-template', title: '第3步：喂草开支', content: '这里是每天必须花的钱。如果有变动，改一下数字就行。' }
+]
+
+const toNum = (val) => Number(val) || 0
 const dailyMilkIncome = computed(() => {
   if (!form.milk_frequency) return 0
   return ((form.milk_quantity_per_time / form.milk_frequency) * form.milk_price).toFixed(0)
 })
+const totalDailyCost = computed(() => form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0))
+const dailyProfit = computed(() => (toNum(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
 
-const totalDailyCost = computed(() => {
-  return form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
-})
-
-const dailyProfit = computed(() => (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
-
-// 🔴 核心修复：加强检测和弹出逻辑
+// 🔴 修复语法错误的 check 函数
 const check = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const { data, error } = await supabase
-    .from('settings')
-    .select('daily_template')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const { data } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).maybeSingle()
 
   if (!data || !data.daily_template || data.daily_template.length === 0) {
-    console.log("SetupWizard: 确认数据为空，延迟弹出引导...");
-    // 🔴 延迟 300ms 弹出，避开页面初始渲染的抖动
+    visible.value = true
     setTimeout(() => {
-      visible.value = true
-    }, 300)
+      ElMessageBox.confirm('欢迎来到驼账宝！需要我带你一步步填写这个表吗？', '新同学你好', {
+        confirmButtonText: '带带我',
+        cancelButtonText: '我自己填',
+        type: 'info',
+        center: true,
+        appendToBody: true
+      }).then(() => {
+        guideRef.value.start()
+      }).catch(() => {})
+    }, 1000)
   }
 }
 
@@ -5551,51 +5389,30 @@ const addItem = () => form.template.push({ name: '', quantity: 1, unit_price: 0 
 const removeItem = (index) => form.template.splice(index, 1)
 
 const saveSettings = async () => {
-  if (form.template.some(item => !item.name.trim())) return ElMessage.warning('请确保所有支出项都有名称')
-
+  if (form.template.some(item => !item.name.trim())) return ElMessage.warning('项目名称不能为空')
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
     
-    // 1. 保存设置
-    const { error: setErr } = await supabase.from('settings').upsert({
-      user_id: user.id,
-      total_camels: form.total_camels,
-      milking_camels: form.milking_camels,
-      daily_template: form.template,
-      milk_price: form.milk_price,
-      milk_frequency: form.milk_frequency,
-      milk_quantity_per_time: form.milk_quantity_per_time
+    await supabase.from('settings').upsert({
+      user_id: user.id, total_camels: form.total_camels, milking_camels: form.milking_camels,
+      daily_template: form.template, milk_price: form.milk_price,
+      milk_frequency: form.milk_frequency, milk_quantity_per_time: form.milk_quantity_per_time
     }, { onConflict: 'user_id' })
-    if (setErr) throw setErr
 
-    // 2. 生成支出实账
-    const costRecords = form.template.map(item => ({
-      user_id: user.id, date: today, category: item.name,
-      quantity: item.quantity, unit_price: item.unit_price,
-      amount: item.quantity * item.unit_price, cost_type: '日常支出'
-    }))
+    const costRecords = form.template.map(item => ({ user_id: user.id, date: today, category: item.name, quantity: item.quantity, unit_price: item.unit_price, amount: item.quantity * item.unit_price, cost_type: '日常支出' }))
     await supabase.from('cost').insert(costRecords)
 
-    // 3. 生成收入实账
     if (form.milk_quantity_per_time > 0) {
-      await supabase.from('income').insert([{
-        user_id: user.id, date: today, category: '驼奶销售',
-        quantity: form.milk_quantity_per_time, unit_price: form.milk_price,
-        amount: form.milk_quantity_per_time * form.milk_price,
-        duration: form.milk_frequency
-      }])
+      await supabase.from('income').insert([{ user_id: user.id, date: today, category: '驼奶销售', quantity: form.milk_quantity_per_time, unit_price: form.milk_price, amount: form.milk_quantity_per_time * form.milk_price, duration: form.milk_frequency }])
     }
 
-    ElMessage.success('初始化成功！已自动生成今日账单。')
+    localStorage.setItem('is_new_user', 'true')
+    ElMessage.success('设置成功！')
     visible.value = false
     emit('finish')
-  } catch (err) {
-    ElMessage.error('保存失败: ' + err.message)
-  } finally {
-    loading.value = false
-  }
+  } catch (err) { ElMessage.error('保存失败') } finally { loading.value = false }
 }
 
 const openManual = () => { visible.value = true }
@@ -5750,6 +5567,114 @@ const getTagType = (t) => {
 const formatDate = (str) => new Date(str).toLocaleDateString()
 
 onMounted(fetchPosts)
+</script>
+
+==================================================
+
+File: src\components\UserGuide.vue
+--------------------------------------------------
+<template>
+  <div v-if="active" class="fixed inset-0 z-[9999] pointer-events-none">
+    <!-- 黑色遮罩底层 -->
+    <div class="absolute inset-0 bg-black/80 pointer-events-auto" @click.stop></div>
+
+    <!-- 高亮挖孔区 -->
+    <div 
+      class="absolute transition-all duration-300 bg-white/10 border-4 border-dashed border-yellow-400 rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.8)] pointer-events-none"
+      :style="highlightStyle"
+    ></div>
+
+    <!-- 指引文字卡片 -->
+    <div 
+      class="absolute left-6 right-6 bg-white rounded-[2.5rem] p-8 shadow-2xl pointer-events-auto animate-in slide-in-from-bottom-10"
+      :style="cardPosition"
+    >
+      <div class="flex items-start gap-4">
+        <div class="text-4xl">🐫</div>
+        <div class="flex-1">
+          <h4 class="font-black text-gray-800 text-xl mb-2">{{ currentStepData.title }}</h4>
+          <p class="text-gray-600 text-base leading-relaxed font-bold">{{ currentStepData.content }}</p>
+        </div>
+      </div>
+      
+      <div class="mt-8 flex gap-4">
+        <el-button v-if="showPrev" @click="prev" size="large" class="flex-1 !rounded-2xl h-14 font-bold">上一步</el-button>
+        <el-button type="primary" @click="next" size="large" class="flex-1 !rounded-2xl h-14 font-black text-lg">
+          {{ isLast ? '结束指引' : '下一步' }}
+        </el-button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, nextTick } from 'vue'
+
+const props = defineProps({
+  steps: { type: Array, default: () => [] }
+})
+
+const emit = defineEmits(['finish'])
+
+const active = ref(false)
+const currentIndex = ref(0)
+const highlightStyle = ref({ top: 0, left: 0, width: 0, height: 0 })
+const cardPosition = ref({ bottom: '10%' })
+
+const currentStepData = computed(() => props.steps[currentIndex.value] || {})
+const showPrev = computed(() => currentIndex.value > 0)
+const isLast = computed(() => currentIndex.value === props.steps.length - 1)
+
+const updateHighlight = async () => {
+  await nextTick()
+  // 给一拍延迟确保 DOM 已经渲染好
+  setTimeout(() => {
+    const step = currentStepData.value
+    const el = document.getElementById(step.targetId)
+    
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      const padding = 12
+      highlightStyle.value = {
+        top: `${rect.top - padding}px`,
+        left: `${rect.left - padding}px`,
+        width: `${rect.width + padding * 2}px`,
+        height: `${rect.height + padding * 2}px`
+      }
+      
+      if (rect.top > window.innerHeight / 2) {
+        cardPosition.value = { top: '10%' }
+      } else {
+        cardPosition.value = { bottom: '10%' }
+      }
+    }
+  }, 100)
+}
+
+const start = () => {
+  currentIndex.value = 0
+  active.value = true
+  updateHighlight()
+}
+
+const next = () => {
+  if (isLast.value) {
+    active.value = false
+    emit('finish')
+  } else {
+    currentIndex.value++
+    updateHighlight()
+  }
+}
+
+const prev = () => {
+  if (currentIndex.value > 0) {
+    currentIndex.value--
+    updateHighlight()
+  }
+}
+
+defineExpose({ start })
 </script>
 
 ==================================================

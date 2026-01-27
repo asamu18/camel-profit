@@ -1,5 +1,4 @@
 <template>
-  <!-- 🔴 增加了 append-to-body 确保弹窗在最顶层 -->
   <el-dialog 
     v-model="visible" 
     title="初始化您的驼场" 
@@ -10,10 +9,9 @@
     append-to-body
     destroy-on-close
   >
-    
     <div class="h-[60vh] overflow-y-auto px-1">
-      <!-- 第一步：规模与收入参数 -->
-      <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100">
+      <!-- 第一步：规模 -->
+      <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100" id="guide-total">
         <h3 class="font-bold text-blue-800 mb-3 text-sm flex items-center">
           <span class="text-lg mr-2">🐪</span> 基础规模与收入预估
         </h3>
@@ -27,7 +25,7 @@
             </el-form-item>
           </div>
           
-          <div class="bg-white p-3 rounded-lg border border-blue-200">
+          <div class="bg-white p-3 rounded-lg border border-blue-200" id="guide-income">
             <div class="text-xs text-blue-500 font-bold mb-2">卖奶情况</div>
             <div class="flex items-center gap-2 mb-2">
               <span class="text-sm text-gray-600 whitespace-nowrap">每</span>
@@ -49,7 +47,7 @@
       </div>
 
       <!-- 第二步：支出模板 -->
-      <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
+      <div class="bg-orange-50 p-4 rounded-xl border border-orange-100" id="guide-template">
         <h3 class="font-bold text-orange-800 mb-3 text-sm flex justify-between items-center">
           <span>💰 每天喂草开支模板</span>
           <span class="text-xs font-normal bg-orange-100 px-2 py-0.5 rounded text-orange-600">可改名</span>
@@ -77,33 +75,38 @@
           </div>
         </div>
         
-        <el-button class="w-full mt-2 border-dashed bg-white" @click="addItem">
-          <span class="text-orange-500 font-bold">+ 添加其他开支项</span>
+        <el-button class="w-full mt-2 border-dashed bg-white font-bold h-10" @click="addItem">
+          + 添加其他支出项
         </el-button>
       </div>
     </div>
 
     <div class="py-4 bg-white border-t mt-2">
-      <div class="flex justify-between text-sm mb-2 px-2">
-        <span class="text-gray-500">预估日净利 (收入-支出):</span>
-        <span class="font-bold text-lg" :class="dailyProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+      <div class="flex justify-between text-sm mb-4 px-2">
+        <span class="text-gray-500 font-bold">预计日净利:</span>
+        <span class="font-black text-xl" :class="toNum(dailyProfit) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
           ¥ {{ dailyProfit }}
         </span>
       </div>
-      <el-button type="primary" size="large" class="w-full font-bold h-12" @click="saveSettings" :loading="loading">
+      <el-button type="primary" size="large" class="w-full font-black text-xl h-14 !rounded-2xl shadow-lg" @click="saveSettings" :loading="loading">
         保存并开始记账
       </el-button>
     </div>
+
+    <!-- 挂载引导组件 -->
+    <UserGuide ref="guideRef" :steps="wizardSteps" />
   </el-dialog>
 </template>
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { supabase } from '../lib/supabase'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import UserGuide from './UserGuide.vue'
 
 const visible = ref(false)
 const loading = ref(false)
+const guideRef = ref(null)
 const emit = defineEmits(['finish'])
 
 const defaultItems = [
@@ -127,34 +130,40 @@ const form = reactive({
   template: JSON.parse(JSON.stringify(defaultItems))
 })
 
+const wizardSteps = [
+  { targetId: 'guide-total', title: '第1步：写下规模', content: '输入你骆驼的总数。系统会根据这个数帮你算出每年的开支基准。' },
+  { targetId: 'guide-income', title: '第2步：记下卖奶频率', content: '设置你几天交一次奶。系统会自动把每一桶奶的钱平摊到每一天。' },
+  { targetId: 'guide-template', title: '第3步：喂草开支', content: '这里是每天必须花的钱。如果有变动，改一下数字就行。' }
+]
+
+const toNum = (val) => Number(val) || 0
 const dailyMilkIncome = computed(() => {
   if (!form.milk_frequency) return 0
   return ((form.milk_quantity_per_time / form.milk_frequency) * form.milk_price).toFixed(0)
 })
+const totalDailyCost = computed(() => form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0))
+const dailyProfit = computed(() => (toNum(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
 
-const totalDailyCost = computed(() => {
-  return form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0)
-})
-
-const dailyProfit = computed(() => (Number(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
-
-// 🔴 核心修复：加强检测和弹出逻辑
+// 🔴 修复语法错误的 check 函数
 const check = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const { data, error } = await supabase
-    .from('settings')
-    .select('daily_template')
-    .eq('user_id', user.id)
-    .maybeSingle()
+  const { data } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).maybeSingle()
 
   if (!data || !data.daily_template || data.daily_template.length === 0) {
-    console.log("SetupWizard: 确认数据为空，延迟弹出引导...");
-    // 🔴 延迟 300ms 弹出，避开页面初始渲染的抖动
+    visible.value = true
     setTimeout(() => {
-      visible.value = true
-    }, 300)
+      ElMessageBox.confirm('欢迎来到驼账宝！需要我带你一步步填写这个表吗？', '新同学你好', {
+        confirmButtonText: '带带我',
+        cancelButtonText: '我自己填',
+        type: 'info',
+        center: true,
+        appendToBody: true
+      }).then(() => {
+        guideRef.value.start()
+      }).catch(() => {})
+    }, 1000)
   }
 }
 
@@ -162,51 +171,30 @@ const addItem = () => form.template.push({ name: '', quantity: 1, unit_price: 0 
 const removeItem = (index) => form.template.splice(index, 1)
 
 const saveSettings = async () => {
-  if (form.template.some(item => !item.name.trim())) return ElMessage.warning('请确保所有支出项都有名称')
-
+  if (form.template.some(item => !item.name.trim())) return ElMessage.warning('项目名称不能为空')
   loading.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     const today = new Date().toISOString().slice(0, 10)
     
-    // 1. 保存设置
-    const { error: setErr } = await supabase.from('settings').upsert({
-      user_id: user.id,
-      total_camels: form.total_camels,
-      milking_camels: form.milking_camels,
-      daily_template: form.template,
-      milk_price: form.milk_price,
-      milk_frequency: form.milk_frequency,
-      milk_quantity_per_time: form.milk_quantity_per_time
+    await supabase.from('settings').upsert({
+      user_id: user.id, total_camels: form.total_camels, milking_camels: form.milking_camels,
+      daily_template: form.template, milk_price: form.milk_price,
+      milk_frequency: form.milk_frequency, milk_quantity_per_time: form.milk_quantity_per_time
     }, { onConflict: 'user_id' })
-    if (setErr) throw setErr
 
-    // 2. 生成支出实账
-    const costRecords = form.template.map(item => ({
-      user_id: user.id, date: today, category: item.name,
-      quantity: item.quantity, unit_price: item.unit_price,
-      amount: item.quantity * item.unit_price, cost_type: '日常支出'
-    }))
+    const costRecords = form.template.map(item => ({ user_id: user.id, date: today, category: item.name, quantity: item.quantity, unit_price: item.unit_price, amount: item.quantity * item.unit_price, cost_type: '日常支出' }))
     await supabase.from('cost').insert(costRecords)
 
-    // 3. 生成收入实账
     if (form.milk_quantity_per_time > 0) {
-      await supabase.from('income').insert([{
-        user_id: user.id, date: today, category: '驼奶销售',
-        quantity: form.milk_quantity_per_time, unit_price: form.milk_price,
-        amount: form.milk_quantity_per_time * form.milk_price,
-        duration: form.milk_frequency
-      }])
+      await supabase.from('income').insert([{ user_id: user.id, date: today, category: '驼奶销售', quantity: form.milk_quantity_per_time, unit_price: form.milk_price, amount: form.milk_quantity_per_time * form.milk_price, duration: form.milk_frequency }])
     }
 
-    ElMessage.success('初始化成功！已自动生成今日账单。')
+    localStorage.setItem('is_new_user', 'true')
+    ElMessage.success('设置成功！')
     visible.value = false
     emit('finish')
-  } catch (err) {
-    ElMessage.error('保存失败: ' + err.message)
-  } finally {
-    loading.value = false
-  }
+  } catch (err) { ElMessage.error('保存失败') } finally { loading.value = false }
 }
 
 const openManual = () => { visible.value = true }
