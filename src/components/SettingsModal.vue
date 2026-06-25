@@ -138,8 +138,8 @@ const handleLogout = async () => { await supabase.auth.signOut(); localStorage.c
 
 const handleShowGuide = () => {
   visible.value = false
-  // 标注：重置历史页面指引状态，确保下次进入历史页会触发指引
-  localStorage.removeItem('is_first_history') 
+  localStorage.removeItem('is_first_history')
+  localStorage.removeItem('setup_wizard_seen')
   emit('showGuide')
 }
 

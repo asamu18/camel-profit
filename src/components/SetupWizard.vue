@@ -144,27 +144,39 @@ const dailyMilkIncome = computed(() => {
 const totalDailyCost = computed(() => form.template.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0))
 const dailyProfit = computed(() => (toNum(dailyMilkIncome.value) - totalDailyCost.value).toFixed(0))
 
-// 🔴 修复语法错误的 check 函数
+const SETUP_WIZARD_SEEN_KEY = 'setup_wizard_seen'
+
 const check = async () => {
+  if (localStorage.getItem(SETUP_WIZARD_SEEN_KEY) === 'true') return
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
   const { data } = await supabase.from('settings').select('daily_template').eq('user_id', user.id).maybeSingle()
 
-  if (!data || !data.daily_template || data.daily_template.length === 0) {
-    visible.value = true
-    setTimeout(() => {
-      ElMessageBox.confirm('欢迎来到驼账宝！需要我带你一步步填写这个表吗？', '新同学你好', {
-        confirmButtonText: '带带我',
-        cancelButtonText: '我自己填',
-        type: 'info',
-        center: true,
-        appendToBody: true
-      }).then(() => {
-        guideRef.value.start()
-      }).catch(() => {})
-    }, 1000)
+  if (data) {
+    localStorage.setItem(SETUP_WIZARD_SEEN_KEY, 'true')
+    return
   }
+
+  if (localStorage.getItem('guide_completed') === 'true') {
+    localStorage.setItem(SETUP_WIZARD_SEEN_KEY, 'true')
+    return
+  }
+
+  localStorage.setItem(SETUP_WIZARD_SEEN_KEY, 'true')
+  visible.value = true
+  setTimeout(() => {
+    ElMessageBox.confirm('欢迎来到驼账宝！需要我带你一步步填写这个表吗？', '新同学你好', {
+      confirmButtonText: '带带我',
+      cancelButtonText: '我自己填',
+      type: 'info',
+      center: true,
+      appendToBody: true
+    }).then(() => {
+      guideRef.value.start()
+    }).catch(() => {})
+  }, 1000)
 }
 
 const addItem = () => form.template.push({ name: '', quantity: 1, unit_price: 0 })
@@ -190,6 +202,7 @@ const saveSettings = async () => {
       await supabase.from('income').insert([{ user_id: user.id, date: today, category: '驼奶销售', quantity: form.milk_quantity_per_time, unit_price: form.milk_price, amount: form.milk_quantity_per_time * form.milk_price, duration: form.milk_frequency }])
     }
 
+    localStorage.setItem(SETUP_WIZARD_SEEN_KEY, 'true')
     localStorage.setItem('is_new_user', 'true')
     ElMessage.success('设置成功！')
     visible.value = false
