@@ -200,6 +200,7 @@ const syncStartDate = ref('')
 const syncEndDate = ref('')
 const saving = ref(false)
 const loading = ref(true) // 🔴 增加 loading 状态
+let guideHasStarted = false // 内存标志，防止重复启动引导
 
 const uiSteps = [
   { targetId: 'guide-profit', title: '1. 核心账本', content: '这里显示你扣除喂草费后，每天平均真正落袋的钱。' },
@@ -255,8 +256,9 @@ const syncData = async () => {
   
   loading.value = false // 🔴 数据加载完毕
   
-  if (localStorage.getItem('is_new_user') === 'true' && localStorage.getItem('guide_completed') !== 'true') {
+  if (localStorage.getItem('is_new_user') === 'true' && localStorage.getItem('guide_completed') !== 'true' && !guideHasStarted) {
     localStorage.removeItem('is_new_user')
+    guideHasStarted = true
     setTimeout(() => { uiGuideRef.value?.start() }, 1000)
   }
 }
@@ -283,6 +285,7 @@ const saveTemplate = async () => {
 const startTutorial = () => uiGuideRef.value?.start()
 const handleGuideFinish = () => {
   localStorage.setItem('guide_completed', 'true')
+  guideHasStarted = false // 重置内存标志
 }
 const openMilk = () => { if (hasTodayMilk.value) { ElMessageBox.confirm('今天已记过，去历史改吗？', '今日已交').then(() => router.push('/history')) } else { addModalRef.value.openWithScene('卖奶') } }
 const openFeed = () => addModalRef.value.openWithScene('买饲料')
